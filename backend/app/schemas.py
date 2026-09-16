@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel
 from app.models import TableStatus, ReservationStatus, OrderStatus, StaffRole
 
@@ -101,6 +101,7 @@ class MenuItemResponse(BaseModel):
 
 class OrderCreate(BaseModel):
     table_id: Optional[int] = None
+    menu_item_ids: List[int] = []
 
 
 class OrderUpdate(BaseModel):
