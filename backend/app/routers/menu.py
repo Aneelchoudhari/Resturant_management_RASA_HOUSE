@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from app.database import get_db
 from app import models, schemas
+from app.dsa.trie import Trie, CategoryIndex
 
 router = APIRouter(prefix="/menu", tags=["menu"])
 
@@ -19,6 +20,32 @@ def create_menu_item(payload: schemas.MenuItemCreate, db: Session = Depends(get_
     db.commit()
     db.refresh(item)
     return item
+
+
+@router.get("/search", response_model=List[schemas.MenuItemResponse])
+def search_menu(q: Optional[str] = None, db: Session = Depends(get_db)):
+    """
+    Prefix autocomplete using a Trie — O(k) traversal where k = len(q).
+    Empty or missing q returns all menu items.
+    """
+    items = db.query(models.MenuItem).all()
+    if not q:
+        return [schemas.MenuItemResponse.model_validate(i) for i in items]
+    trie = Trie()
+    for item in items:
+        trie.insert(item.name, schemas.MenuItemResponse.model_validate(item))
+    return trie.search_prefix(q)
+
+
+@router.get("/category/{tag}", response_model=List[schemas.MenuItemResponse])
+def get_by_category(tag: str, db: Session = Depends(get_db)):
+    """
+    O(1) category lookup using a hash map (CategoryIndex).
+    """
+    items = db.query(models.MenuItem).all()
+    index = CategoryIndex()
+    index.build([schemas.MenuItemResponse.model_validate(i) for i in items])
+    return index.get(tag)
 
 
 @router.get("/{item_id}", response_model=schemas.MenuItemResponse)
