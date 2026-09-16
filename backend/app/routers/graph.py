@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from app.database import get_db
 from app import models
 from app.dsa.table_graph import Graph
+from app.auth import get_current_staff
 
 router = APIRouter(prefix="/tables", tags=["tables"])
 
@@ -34,7 +35,12 @@ class AdjacencyResponse(BaseModel):
 # ── adjacency management ───────────────────────────────────────────────────────
 
 @router.post("/{table_id}/adjacent/{other_id}", response_model=AdjacencyResponse, status_code=201)
-def add_adjacency(table_id: int, other_id: int, db: Session = Depends(get_db)):
+def add_adjacency(
+    table_id: int,
+    other_id: int,
+    db: Session = Depends(get_db),
+    _: models.Staff = Depends(get_current_staff),
+):
     """Mark two tables as physically adjacent (combinable)."""
     for tid in (table_id, other_id):
         if not db.query(models.Table).filter(models.Table.id == tid).first():
@@ -47,7 +53,11 @@ def add_adjacency(table_id: int, other_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{table_id}/adjacent/{other_id}", status_code=204)
-def remove_adjacency(table_id: int, other_id: int):
+def remove_adjacency(
+    table_id: int,
+    other_id: int,
+    _: models.Staff = Depends(get_current_staff),
+):
     """Remove the adjacency edge between two tables."""
     graph_instance.remove_edge(table_id, other_id)
 

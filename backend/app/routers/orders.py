@@ -7,6 +7,7 @@ from app.database import get_db
 from app import models, schemas
 from app.dsa.order_router import router_instance, STATIONS
 from app.dsa.order_history import BST
+from app.auth import get_current_staff
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 kitchen_router = APIRouter(prefix="/kitchen", tags=["kitchen"])
@@ -36,7 +37,11 @@ class KitchenQueueResponse(BaseModel):
 # ── POST /orders ───────────────────────────────────────────────────────────────
 
 @router.post("/", response_model=OrderRoutingResponse, status_code=201)
-def create_order(payload: schemas.OrderCreate, db: Session = Depends(get_db)):
+def create_order(
+    payload: schemas.OrderCreate,
+    db: Session = Depends(get_db),
+    _: models.Staff = Depends(get_current_staff),
+):
     """
     Create an order and route each menu item to the appropriate station queue.
     Items are split by category; unknown categories are distributed round-robin.
