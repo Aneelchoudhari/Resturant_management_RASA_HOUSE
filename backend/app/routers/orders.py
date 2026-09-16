@@ -1,11 +1,12 @@
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, date
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 from app.database import get_db
 from app import models, schemas
 from app.dsa.order_router import router_instance, STATIONS
+from app.dsa.order_history import BST
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 kitchen_router = APIRouter(prefix="/kitchen", tags=["kitchen"])
@@ -77,10 +78,42 @@ def create_order(payload: schemas.OrderCreate, db: Session = Depends(get_db)):
         for station, items in routing_summary.items()
     }
 
+
     return OrderRoutingResponse(
         order=schemas.OrderResponse.model_validate(order),
         routing=routing_response,
     )
+
+
+# ── GET /orders/history ────────────────────────────────────────────────────────
+
+@router.get("/history", response_model=List[schemas.OrderResponse])
+def get_order_history(
+    from_date: Optional[date] = Query(default=None, alias="from"),
+    to_date: Optional[date] = Query(default=None, alias="to"),
+    db: Session = Depends(get_db),
+):
+    """
+    Range query over order history using a BST keyed by date.
+    O(log n + m) for a bounded range; O(n) when no dates supplied (full scan).
+    Query params: ?from=YYYY-MM-DD&to=YYYY-MM-DD
+    """
+    orders = db.query(models.Order).all()
+
+    bst = BST()
+    for order in orders:
+        bst.insert(order.created_at.date(), order)
+
+    if from_date and to_date:
+        matched = bst.range_query(from_date, to_date)
+    elif from_date:
+        matched = bst.range_query(from_date, date.max)
+    elif to_date:
+        matched = bst.range_query(date.min, to_date)
+    else:
+        matched = [v for _, v in bst.inorder()]
+
+    return [schemas.OrderResponse.model_validate(o) for o in matched]
 
 
 # ── GET /kitchen/{station} ─────────────────────────────────────────────────────
