@@ -1,0 +1,96 @@
+/* ── Reset & base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f4f5f7;
+  color: #1a1a2e;
+  min-height: 100vh;
+}
+
+/* ── Nav ──────────────────────────────────────────────────────────────────── */
+nav {
+  background: #1a1a2e;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  height: 56px;
+}
+nav .brand { color: #fff; font-weight: 700; font-size: 1.1rem; margin-right: auto; }
+nav a { color: #a0aec0; text-decoration: none; font-size: 0.9rem; padding: 0.25rem 0.5rem; border-radius: 4px; }
+nav a:hover, nav a.active { color: #fff; background: rgba(255,255,255,0.1); }
+nav button.logout { background: none; border: 1px solid #a0aec0; color: #a0aec0; padding: 0.25rem 0.75rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+nav button.logout:hover { border-color: #fff; color: #fff; }
+
+/* ── Page wrapper ─────────────────────────────────────────────────────────── */
+.page { max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }
+h1 { font-size: 1.6rem; margin-bottom: 1.25rem; }
+h2 { font-size: 1.2rem; margin-bottom: 0.75rem; }
+
+/* ── Cards ────────────────────────────────────────────────────────────────── */
+.card { background: #fff; border-radius: 8px; padding: 1.25rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 1rem; }
+
+/* ── Forms ────────────────────────────────────────────────────────────────── */
+form { display: flex; flex-direction: column; gap: 0.75rem; }
+label { font-size: 0.85rem; font-weight: 600; color: #4a5568; }
+input, select { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #cbd5e0; border-radius: 6px; font-size: 0.95rem; }
+input:focus, select:focus { outline: none; border-color: #4299e1; box-shadow: 0 0 0 3px rgba(66,153,225,0.15); }
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+.btn { display: inline-block; padding: 0.5rem 1.25rem; border-radius: 6px; border: none; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: opacity 0.15s; }
+.btn:hover { opacity: 0.85; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: #4299e1; color: #fff; }
+.btn-success { background: #48bb78; color: #fff; }
+.btn-danger  { background: #fc8181; color: #fff; }
+.btn-neutral { background: #e2e8f0; color: #2d3748; }
+
+/* ── Tables ───────────────────────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th { background: #edf2f7; text-align: left; padding: 0.5rem 0.75rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #718096; }
+td { padding: 0.6rem 0.75rem; border-bottom: 1px solid #edf2f7; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f7fafc; }
+
+/* ── Badges ───────────────────────────────────────────────────────────────── */
+.badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+.badge-green  { background: #c6f6d5; color: #276749; }
+.badge-yellow { background: #fefcbf; color: #744210; }
+.badge-red    { background: #fed7d7; color: #742a2a; }
+.badge-blue   { background: #bee3f8; color: #2a4365; }
+.badge-gray   { background: #e2e8f0; color: #4a5568; }
+
+/* ── Table map grid ───────────────────────────────────────────────────────── */
+.table-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 0.75rem; }
+.table-cell { border-radius: 8px; padding: 1rem 0.75rem; text-align: center; font-weight: 600; font-size: 0.9rem; border: 2px solid transparent; transition: transform 0.1s; cursor: default; }
+.table-cell:hover { transform: scale(1.03); }
+.table-available  { background: #c6f6d5; border-color: #68d391; color: #276749; }
+.table-occupied   { background: #fed7d7; border-color: #fc8181; color: #742a2a; }
+.table-reserved   { background: #fefcbf; border-color: #f6e05e; color: #744210; }
+
+/* ── Priority bar ─────────────────────────────────────────────────────────── */
+.priority-high   { color: #276749; font-weight: 700; }
+.priority-medium { color: #744210; font-weight: 700; }
+.priority-low    { color: #742a2a; font-weight: 700; }
+
+/* ── Search ───────────────────────────────────────────────────────────────── */
+.search-wrap { position: relative; margin-bottom: 1rem; }
+.search-wrap input { font-size: 1rem; padding: 0.6rem 1rem; }
+.results-list { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; }
+.result-item { background: #fff; border-radius: 8px; padding: 0.9rem 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.result-item .name { font-weight: 600; }
+.result-item .meta { font-size: 0.8rem; color: #718096; margin-top: 0.25rem; }
+
+/* ── Kitchen station tabs ─────────────────────────────────────────────────── */
+.station-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.station-tab { padding: 0.4rem 1rem; border-radius: 6px; border: 2px solid #cbd5e0; background: #fff; cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+.station-tab.active { border-color: #4299e1; background: #ebf8ff; color: #2b6cb0; }
+
+/* ── Misc ─────────────────────────────────────────────────────────────────── */
+.error { color: #c53030; font-size: 0.85rem; padding: 0.5rem; background: #fff5f5; border-radius: 4px; }
+.empty { color: #a0aec0; font-style: italic; padding: 1rem 0; text-align: center; }
+.row { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; }
+.row .field { flex: 1; min-width: 140px; display: flex; flex-direction: column; gap: 0.3rem; }
+.mt1 { margin-top: 0.5rem; }
+.mt2 { margin-top: 1rem; }
