@@ -15,12 +15,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(allocation.router)   # /tables/allocate — must be before tables /{table_id}
+app.include_router(graph.router)         # /tables/combine  — must be before tables /{table_id}
 app.include_router(tables.router)
 app.include_router(menu.router)
 app.include_router(staff.router)
 app.include_router(waitlist.router)
-app.include_router(allocation.router)
-app.include_router(graph.router)
 app.include_router(orders_router)
 app.include_router(kitchen_router)
 app.include_router(auth_router)
