@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { fetchOrderHistory } from '../api'
+import { completePayment, fetchOrderHistory, updateOrderStatus } from '../api'
+import { getUserRole } from '../auth'
 
 const today = () => new Date().toISOString().slice(0, 10)
 const weekAgo = () => {
@@ -9,11 +10,25 @@ const weekAgo = () => {
 }
 
 export default function OrderHistory() {
+  const role = getUserRole()
+  const canChangeStatus = ['admin', 'manager', 'waiter', 'chef', 'inventory', 'cashier'].includes(role)
+  const canMarkPaid = ['admin', 'manager', 'cashier', 'waiter'].includes(role)
+  const waiterStatuses = ['accepted', 'served', 'cancelled']
+  const kitchenStatuses = ['preparing', 'ready']
+  const allStatuses = ['accepted', 'preparing', 'ready', 'served', 'completed', 'cancelled']
+
+  // Filter status options based on role
+  const allowedStatuses = (role === 'chef' || role === 'inventory')
+    ? kitchenStatuses
+    : role === 'waiter'
+    ? waiterStatuses
+    : allStatuses
   const [from, setFrom] = useState(weekAgo())
   const [to, setTo] = useState(today())
   const [orders, setOrders] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [actionError, setActionError] = useState('')
 
   const search = async (e) => {
     e.preventDefault()
@@ -26,6 +41,28 @@ export default function OrderHistory() {
       setError(String(err))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const changeStatus = async (orderId, status) => {
+    setActionError('')
+    try {
+      await updateOrderStatus(orderId, status)
+      const data = await fetchOrderHistory(from || undefined, to || undefined)
+      setOrders(data)
+    } catch (err) {
+      setActionError(String(err))
+    }
+  }
+
+  const pay = async (orderId, method) => {
+    setActionError('')
+    try {
+      await completePayment(orderId, method)
+      const data = await fetchOrderHistory(from || undefined, to || undefined)
+      setOrders(data)
+    } catch (err) {
+      setActionError(String(err))
     }
   }
 
@@ -70,6 +107,7 @@ export default function OrderHistory() {
       </div>
 
       {error && <p className="error">{error}</p>}
+      {actionError && <p className="error">{actionError}</p>}
 
       {orders !== null && (
         <div className="card">
@@ -86,6 +124,8 @@ export default function OrderHistory() {
                   <th>Order ID</th>
                   <th>Table</th>
                   <th>Status</th>
+                  <th>Payment</th>
+                  <th>Actions</th>
                   <th>Created At</th>
                 </tr>
               </thead>
@@ -95,6 +135,22 @@ export default function OrderHistory() {
                     <td><span className="badge badge-blue">#{o.id}</span></td>
                     <td>{o.table_id ? `Table #${o.table_id}` : '—'}</td>
                     <td><span className={`badge ${statusBadge(o.status)}`}>{o.status}</span></td>
+                    <td><span className="badge badge-gray">{o.payment_status}</span></td>
+                    <td>
+                       <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                         {canChangeStatus && (
+                           <select value={o.status} onChange={(e) => changeStatus(o.id, e.target.value)} aria-label={`Status for order ${o.id}`}>
+                             {allowedStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                           </select>
+                         )}
+                         {canMarkPaid && o.payment_status !== 'paid' && (
+                           <button className="btn btn-success" onClick={() => pay(o.id, 'cash')}>Mark Cash Paid</button>
+                         )}
+                         {!canChangeStatus && !canMarkPaid && (
+                           <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>View only</span>
+                         )}
+                       </div>
+                    </td>
                     <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
                       {new Date(o.created_at).toLocaleString()}
                     </td>

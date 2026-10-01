@@ -4,6 +4,7 @@ from app.routers import tables, menu, staff, waitlist, allocation, graph
 from app.routers.orders import router as orders_router, kitchen_router
 from app.routers.auth_router import router as auth_router
 from app.routers.reservations import router as reservations_router
+from app.routers.admin import router as admin_router
 
 app = FastAPI(title="Restaurant Management System")
 
@@ -25,6 +26,7 @@ app.include_router(orders_router)
 app.include_router(kitchen_router)
 app.include_router(auth_router)
 app.include_router(reservations_router)
+app.include_router(admin_router)
 
 
 @app.get("/")

@@ -5,12 +5,26 @@ from pydantic import BaseModel
 from app.database import get_db
 from app import models
 from app.dsa.table_graph import Graph
-from app.auth import get_current_staff
+from app.auth import require_roles
 
 router = APIRouter(prefix="/tables", tags=["tables"])
 
 # Module-level graph singleton — persists adjacency between requests
 graph_instance = Graph()
+
+# Only admin and manager can configure table adjacency
+ADJACENCY_MANAGEMENT_ROLES = (
+    models.StaffRole.admin,
+    models.StaffRole.manager,
+)
+
+# Any staff can query combine results (read-only)
+FLOOR_VIEW_ROLES = (
+    models.StaffRole.admin,
+    models.StaffRole.manager,
+    models.StaffRole.waiter,
+    models.StaffRole.receptionist,
+)
 
 
 # ── response schemas ───────────────────────────────────────────────────────────
@@ -39,9 +53,9 @@ def add_adjacency(
     table_id: int,
     other_id: int,
     db: Session = Depends(get_db),
-    _: models.Staff = Depends(get_current_staff),
+    _: models.Staff = Depends(require_roles(*ADJACENCY_MANAGEMENT_ROLES)),
 ):
-    """Mark two tables as physically adjacent (combinable)."""
+    """Mark two tables as physically adjacent (combinable) — admin/manager only."""
     for tid in (table_id, other_id):
         if not db.query(models.Table).filter(models.Table.id == tid).first():
             raise HTTPException(status_code=404, detail=f"Table id={tid} not found")
@@ -56,23 +70,23 @@ def add_adjacency(
 def remove_adjacency(
     table_id: int,
     other_id: int,
-    _: models.Staff = Depends(get_current_staff),
+    _: models.Staff = Depends(require_roles(*ADJACENCY_MANAGEMENT_ROLES)),
 ):
-    """Remove the adjacency edge between two tables."""
+    """Remove the adjacency edge between two tables — admin/manager only."""
     graph_instance.remove_edge(table_id, other_id)
 
 
 # ── GET /tables/combine ────────────────────────────────────────────────────────
 
 @router.get("/combine", response_model=CombineResponse)
-def combine_tables(party_size: int, db: Session = Depends(get_db)):
+def combine_tables(
+    party_size: int,
+    db: Session = Depends(get_db),
+    _: models.Staff = Depends(require_roles(*FLOOR_VIEW_ROLES)),
+):
     """
     Use BFS to find all connected table groups that can seat a party.
-
-    Algorithm  — O(V + E):
-      1. Ensure every table in the DB is a node in the graph.
-      2. Find all connected components via BFS.
-      3. For each component, sum capacities and flag those >= party_size.
+    Restricted to staff with floor access (admin, manager, waiter, host).
     """
     tables = db.query(models.Table).all()
     table_map = {t.id: t for t in tables}

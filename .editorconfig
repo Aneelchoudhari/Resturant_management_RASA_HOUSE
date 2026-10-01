@@ -1,0 +1,19 @@
+{
+  "models": [
+    {
+      "title": "OmniRoute",
+      "provider": "openai",
+      "model": "auto",
+      "apiBase": "http://localhost:20128/v1",
+      "apiKey": "sk-69b2695d388e348984bd86ec037998632df30b3ffb2e030",
+      "default": true
+    }
+  ],
+  "tabAutocompleteModel": {
+    "title": "OmniRoute Autocomplete",
+    "provider": "openai",
+    "model": "auto",
+    "apiBase": "http://localhost:20128/v1",
+    "apiKey": "sk-69b2695d388e348984bd86ec037998632df30b3ffb2e030"
+  }
+}

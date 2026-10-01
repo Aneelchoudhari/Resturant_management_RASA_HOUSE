@@ -44,3 +44,8 @@ Thumbs.db
 
 # Alembic
 backend/alembic/versions/*.pyc
+
+# Local database files
+*.db
+*.sqlite
+*.sqlite3

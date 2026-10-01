@@ -12,9 +12,10 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Override sqlalchemy.url with DATABASE_URL env var
-database_url = os.getenv("DATABASE_URL")
+database_url = os.getenv("SUPABASE_DATABASE_URL") or os.getenv("DATABASE_URL")
 if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+    # Alembic uses ConfigParser interpolation; preserve URL escapes such as %40.
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 # Import all models so Alembic can autogenerate migrations
 from app.database import Base
@@ -41,8 +42,10 @@ def run_migrations_online() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
+    if database_url and ".pooler.supabase.com" in database_url:
+        connectable = connectable.execution_options(isolation_level="AUTOCOMMIT")
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(connection=connection, target_metadata=target_metadata, transactional_ddl=False)
         with context.begin_transaction():
             context.run_migrations()
 

@@ -1,6 +1,6 @@
 import pytest
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.dsa.priority_queue import MinHeap, compute_priority_score
 
 
@@ -161,14 +161,14 @@ class TestToSortedList:
 
 class TestPriorityScore:
     def test_lower_tier_has_lower_score(self):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         score_tier1 = compute_priority_score(1, 2, now)
         score_tier2 = compute_priority_score(2, 2, now)
         score_tier3 = compute_priority_score(3, 2, now)
         assert score_tier1 < score_tier2 < score_tier3
 
     def test_longer_wait_lowers_score(self):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         joined_5min_ago = now - timedelta(minutes=5)
         joined_10min_ago = now - timedelta(minutes=10)
 
@@ -179,13 +179,13 @@ class TestPriorityScore:
         assert score_10min < score_5min < score_new
 
     def test_larger_party_lowers_score(self):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         score_small = compute_priority_score(1, 1, now)
         score_large = compute_priority_score(1, 8, now)
         assert score_large < score_small
 
     def test_wait_time_can_overcome_tier_difference(self):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         # Tier 2 guest who has waited 20 minutes vs tier 3 guest who just arrived
         tier2_long_wait = compute_priority_score(2, 2, now - timedelta(minutes=20))
         tier3_just_joined = compute_priority_score(3, 2, now)

@@ -15,24 +15,16 @@ class TokenResponse(BaseModel):
     token_type: str
 
 
-# ── POST /auth/register ────────────────────────────────────────────────────────
-
-@router.post("/register", response_model=schemas.StaffResponse, status_code=201)
-def register(payload: schemas.StaffCreate, db: Session = Depends(get_db)):
-    """Create a new staff account. Password is bcrypt-hashed on storage."""
-    existing = db.query(models.Staff).filter(models.Staff.email == payload.email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    staff = models.Staff(
-        name=payload.name,
-        role=payload.role,
-        email=payload.email,
-        hashed_password=hash_password(payload.password),
+@router.post("/register", status_code=403)
+def blocked_staff_registration():
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Staff accounts can only be created by an administrator",
     )
-    db.add(staff)
-    db.commit()
-    db.refresh(staff)
-    return staff
+
+
+# Staff accounts are provisioned only through POST /staff/, which requires an
+# authenticated admin. There is intentionally no public staff registration route.
 
 
 # ── POST /auth/login ───────────────────────────────────────────────────────────
@@ -54,4 +46,37 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
     token = create_access_token(data={"sub": staff.email, "role": staff.role.value})
+    return TokenResponse(access_token=token, token_type="bearer")
+
+
+@router.post("/customer/register", response_model=schemas.CustomerResponse, status_code=201)
+def register_customer(payload: schemas.CustomerCreate, db: Session = Depends(get_db)):
+    existing_customer = db.query(models.Customer).filter(models.Customer.email == payload.email).first()
+    existing_staff = db.query(models.Staff).filter(models.Staff.email == payload.email).first()
+    if existing_customer or existing_staff:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    customer = models.Customer(
+        name=payload.name,
+        email=payload.email,
+        hashed_password=hash_password(payload.password),
+    )
+    db.add(customer)
+    db.commit()
+    db.refresh(customer)
+    return customer
+
+
+@router.post("/customer/login", response_model=TokenResponse)
+def login_customer(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    customer = db.query(models.Customer).filter(models.Customer.email == form_data.username).first()
+    if not customer or not verify_password(form_data.password, customer.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect customer email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token = create_access_token(data={"sub": customer.email, "role": "customer"})
     return TokenResponse(access_token=token, token_type="bearer")

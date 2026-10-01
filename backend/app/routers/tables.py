@@ -3,13 +3,28 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
 from app import models, schemas
-from app.auth import get_current_staff, get_current_admin
+from app.auth import get_current_admin, require_roles
 
 router = APIRouter(prefix="/tables", tags=["tables"])
+
+# Roles allowed to manage tables operationally (but not structural edits)
+FLOOR_ROLES = (
+    models.StaffRole.admin,
+    models.StaffRole.manager,
+    models.StaffRole.waiter,
+    models.StaffRole.receptionist,  # host
+)
+
+# Roles allowed to fully edit table structure
+MANAGEMENT_ROLES = (
+    models.StaffRole.admin,
+    models.StaffRole.manager,
+)
 
 
 @router.get("/", response_model=List[schemas.TableResponse])
 def list_tables(db: Session = Depends(get_db)):
+    """Public — any client (staff or customer) can see current table statuses."""
     return db.query(models.Table).all()
 
 
@@ -17,7 +32,7 @@ def list_tables(db: Session = Depends(get_db)):
 def create_table(
     payload: schemas.TableCreate,
     db: Session = Depends(get_db),
-    _: models.Staff = Depends(get_current_staff),
+    _: models.Staff = Depends(get_current_admin),  # Admin ONLY
 ):
     existing = db.query(models.Table).filter(models.Table.number == payload.number).first()
     if existing:
@@ -42,8 +57,9 @@ def update_table(
     table_id: int,
     payload: schemas.TableUpdate,
     db: Session = Depends(get_db),
-    _: models.Staff = Depends(get_current_staff),
+    staff: models.Staff = Depends(require_roles(*MANAGEMENT_ROLES)),  # admin/manager full edit
 ):
+    """Full table update (number, capacity, status) — admin and manager only."""
     table = db.query(models.Table).filter(models.Table.id == table_id).first()
     if not table:
         raise HTTPException(status_code=404, detail="Table not found")
@@ -54,11 +70,28 @@ def update_table(
     return table
 
 
+@router.patch("/{table_id}/status", response_model=schemas.TableResponse)
+def update_table_status(
+    table_id: int,
+    payload: schemas.TableStatusUpdate,
+    db: Session = Depends(get_db),
+    _: models.Staff = Depends(require_roles(*FLOOR_ROLES)),  # waiter/host can change status
+):
+    """Status-only update — waiter and host can mark tables occupied/available/cleaning/reserved."""
+    table = db.query(models.Table).filter(models.Table.id == table_id).first()
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    table.status = payload.status
+    db.commit()
+    db.refresh(table)
+    return table
+
+
 @router.delete("/{table_id}", status_code=204)
 def delete_table(
     table_id: int,
     db: Session = Depends(get_db),
-    _: models.Staff = Depends(get_current_admin),
+    _: models.Staff = Depends(get_current_admin),  # Admin ONLY
 ):
     table = db.query(models.Table).filter(models.Table.id == table_id).first()
     if not table:

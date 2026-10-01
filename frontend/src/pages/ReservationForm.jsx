@@ -1,7 +1,14 @@
 import { useState } from 'react'
-import { createReservation, joinWaitlist } from '../api'
+import { createReservation, joinWaitlist, staffJoinWaitlist } from '../api'
+import { isStaffUser, getUserRole } from '../auth'
+
+const VIP_ROLES = ['manager', 'receptionist', 'admin']
 
 export default function ReservationForm() {
+  const staffMode = isStaffUser()
+  const role = getUserRole()
+  const canSetPriority = VIP_ROLES.includes(role)
+
   const [form, setForm] = useState({
     guest_name: '',
     party_size: 2,
@@ -34,12 +41,25 @@ export default function ReservationForm() {
         start_time: new Date(form.start_time).toISOString(),
         duration_minutes: form.duration_minutes,
       })
-      // 2. Also add to waitlist (priority queue)
-      const waitlistEntry = await joinWaitlist({
-        guest_name: form.guest_name,
-        party_size: form.party_size,
-        priority_tier: form.priority_tier,
-      })
+      // 2. Add to priority waitlist
+      //    Staff with VIP roles use the authenticated endpoint (allows tier 1 & 2)
+      //    Other cases fall back to the public walk-in endpoint (tier 3)
+      let waitlistEntry
+      if (staffMode && canSetPriority) {
+        waitlistEntry = await staffJoinWaitlist({
+          guest_name: form.guest_name,
+          party_size: form.party_size,
+          priority_tier: form.priority_tier,
+        })
+      } else {
+        // Customer reservations go in as Reservation tier (2) via staff endpoint if possible,
+        // but customers are not staff — use walk-in tier so public endpoint is valid
+        waitlistEntry = await joinWaitlist({
+          guest_name: form.guest_name,
+          party_size: form.party_size,
+          priority_tier: 3, // public endpoint only accepts walk-in
+        })
+      }
       setResult({ reservation, waitlistEntry })
       setForm({ guest_name: '', party_size: 2, start_time: '', duration_minutes: 60, priority_tier: 2 })
     } catch (err) {
@@ -51,12 +71,18 @@ export default function ReservationForm() {
 
   return (
     <div className="page" style={{ maxWidth: 600 }}>
-      <h1>New Reservation</h1>
+      <h1>{staffMode ? 'New Reservation' : 'Reserve a Table'}</h1>
       <div className="card">
-        <p style={{ fontSize: '0.85rem', color: '#718096', marginBottom: '1rem' }}>
-          Creates a pending reservation (for the interval scheduler) and adds the guest to the
-          priority waitlist queue.
-        </p>
+        {!staffMode && (
+          <p style={{ fontSize: '0.85rem', color: '#718096', marginBottom: '1rem' }}>
+            Book your table at RASA HOUSE. We will confirm your reservation shortly.
+          </p>
+        )}
+        {staffMode && (
+          <p style={{ fontSize: '0.85rem', color: '#718096', marginBottom: '1rem' }}>
+            Creates a pending reservation and adds the guest to the priority waitlist queue.
+          </p>
+        )}
         <form onSubmit={submit}>
           <div className="field">
             <label>Guest Name</label>
@@ -67,18 +93,20 @@ export default function ReservationForm() {
               <label>Party Size</label>
               <input type="number" min="1" max="20" value={form.party_size} onChange={set('party_size')} />
             </div>
-            <div className="field">
-              <label>Priority Tier</label>
-              <select value={form.priority_tier} onChange={set('priority_tier')}>
-                <option value={1}>1 — VIP</option>
-                <option value={2}>2 — Reservation</option>
-                <option value={3}>3 — Walk-in</option>
-              </select>
-            </div>
+            {/* Priority tier selector only visible to manager/receptionist/admin */}
+            {canSetPriority && (
+              <div className="field">
+                <label>Priority</label>
+                <select value={form.priority_tier} onChange={set('priority_tier')}>
+                  <option value={1}>⭐ VIP</option>
+                  <option value={2}>📅 Reservation</option>
+                </select>
+              </div>
+            )}
           </div>
           <div className="row">
             <div className="field">
-              <label>Start Date & Time</label>
+              <label>Date &amp; Time</label>
               <input type="datetime-local" value={form.start_time} onChange={set('start_time')} required />
             </div>
             <div className="field">
@@ -88,26 +116,30 @@ export default function ReservationForm() {
           </div>
           {error && <p className="error">{error}</p>}
           <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? 'Submitting…' : 'Create Reservation'}
+            {loading ? 'Submitting…' : staffMode ? 'Create Reservation' : 'Reserve Table'}
           </button>
         </form>
       </div>
 
       {result && (
         <div className="card" style={{ borderLeft: '4px solid #48bb78' }}>
-          <h2 style={{ color: '#276749' }}>✓ Reservation Created</h2>
+          <h2 style={{ color: '#276749' }}>✓ Reservation Confirmed</h2>
           <p className="mt1"><strong>Reservation ID:</strong> #{result.reservation.id}</p>
           <p><strong>Guest:</strong> {result.reservation.guest_name}</p>
-          <p><strong>Party:</strong> {result.reservation.party_size} pax</p>
+          <p><strong>Party:</strong> {result.reservation.party_size} guests</p>
           <p><strong>Status:</strong>{' '}
             <span className="badge badge-yellow">{result.reservation.status}</span>
           </p>
-          <p className="mt1"><strong>Waitlist position added</strong> — priority score:{' '}
-            <span style={{ fontFamily: 'monospace' }}>{result.waitlistEntry.priority_score?.toFixed(0)}</span>
-          </p>
-          <p style={{ fontSize: '0.8rem', color: '#718096', marginTop: '0.5rem' }}>
-            Run the Table Allocator on the Tables page to assign a table.
-          </p>
+          {staffMode && (
+            <p className="mt1" style={{ fontSize: '0.8rem', color: '#718096' }}>
+              Waitlist queue position added. Run the Table Allocator on the Tables page to assign a table.
+            </p>
+          )}
+          {!staffMode && (
+            <p className="mt1" style={{ fontSize: '0.85rem', color: '#475569' }}>
+              Our team will confirm your table assignment. Check <strong>My Account</strong> for updates.
+            </p>
+          )}
         </div>
       )}
     </div>

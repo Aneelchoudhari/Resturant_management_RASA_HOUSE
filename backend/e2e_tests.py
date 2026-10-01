@@ -14,7 +14,7 @@ import time
 import urllib.request
 import urllib.error
 import urllib.parse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 BASE = "http://localhost:8000"
 PASS = "✅"
@@ -284,7 +284,7 @@ if ok:
 # ── 6. Reservations ───────────────────────────────────────────────────────────
 section("6. Reservations")
 
-start_iso = (datetime.utcnow() + timedelta(hours=2)).isoformat()
+start_iso = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
 ok, body = check("POST /reservations/",
     *req("POST", "/reservations/", {
         "guest_name": "Alice VIP",
@@ -298,7 +298,7 @@ check("POST /reservations/ (second)",
     *req("POST", "/reservations/", {
         "guest_name": "Bob Walk-in",
         "party_size": 2,
-        "start_time": (datetime.utcnow() + timedelta(hours=4)).isoformat(),
+        "start_time": (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat(),
         "duration_minutes": 60,
     }),
     expected_status=201)

@@ -5,6 +5,7 @@ from typing import List
 from pydantic import BaseModel
 from app.database import get_db
 from app import models
+from app.auth import require_roles
 from app.dsa.interval_scheduler import (
     allocate,
     ReservationSlot,
@@ -12,6 +13,13 @@ from app.dsa.interval_scheduler import (
 )
 
 router = APIRouter(prefix="/tables", tags=["tables"])
+
+# Only admin, manager, and receptionist (host) can run table allocation
+ALLOCATION_ROLES = (
+    models.StaffRole.admin,
+    models.StaffRole.manager,
+    models.StaffRole.receptionist,  # host/floor manager
+)
 
 
 # ── response schemas ───────────────────────────────────────────────────────────
@@ -35,10 +43,14 @@ class AllocationResponse(BaseModel):
 # ── route ──────────────────────────────────────────────────────────────────────
 
 @router.get("/allocate", response_model=AllocationResponse)
-def get_allocation(db: Session = Depends(get_db)):
+def get_allocation(
+    db: Session = Depends(get_db),
+    _: models.Staff = Depends(require_roles(*ALLOCATION_ROLES)),
+):
     """
     Run the greedy interval-scheduling allocator over all pending reservations
     and available tables. Returns the proposed assignment plan (read-only).
+    Restricted to admin, manager, and host (receptionist) roles.
     """
     reservations = (
         db.query(models.Reservation)

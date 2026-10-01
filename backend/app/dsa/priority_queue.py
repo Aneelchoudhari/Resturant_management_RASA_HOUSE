@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def compute_priority_score(priority_tier: int, party_size: int, joined_at: datetime) -> float:
@@ -12,7 +12,10 @@ def compute_priority_score(priority_tier: int, party_size: int, joined_at: datet
     - wait_seconds: seconds spent in queue; longer wait lowers the score (raises priority).
     - party_size: larger parties get a small priority boost.
     """
-    wait_seconds = (datetime.utcnow() - joined_at).total_seconds()
+    now = datetime.now(timezone.utc)
+    if joined_at.tzinfo is None:
+        joined_at = joined_at.replace(tzinfo=timezone.utc)
+    wait_seconds = (now - joined_at).total_seconds()
     return (priority_tier * 1000) - wait_seconds - (party_size * 5)
 
 

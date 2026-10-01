@@ -371,9 +371,9 @@ else:
 # ── 10. Order History ─────────────────────────────────────────────────────────
 section("10. Order History — BST Range Query")
 
-today = datetime.utcnow().strftime("%Y-%m-%d")
-yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
-tomorrow = (datetime.utcnow() + timedelta(days=1)).strftime("%Y-%m-%d")
+today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
 
 check(f"GET /orders/history?from={yesterday}&to={tomorrow}",
     *req("GET", f"/orders/history?from={yesterday}&to={tomorrow}"),

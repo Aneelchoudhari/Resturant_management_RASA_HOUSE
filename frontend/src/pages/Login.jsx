@@ -1,11 +1,15 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { login, register } from '../api'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { customerLogin, login, registerCustomer } from '../api'
+import { getUserRole } from '../auth'
 
 export default function Login() {
   const navigate = useNavigate()
-  const [mode, setMode] = useState('login') // 'login' | 'register'
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'staff' })
+  const location = useLocation()
+  const staffMode = new URLSearchParams(location.search).get('role') === 'staff'
+  const selectedStaffRole = new URLSearchParams(location.search).get('staffRole')
+  const [mode, setMode] = useState(staffMode ? 'staff-login' : 'customer-login')
+  const [form, setForm] = useState({ name: '', email: '', password: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -16,14 +20,27 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      if (mode === 'login') {
-        const data = await login(form.email, form.password)
+      const customerMode = mode.startsWith('customer')
+      localStorage.removeItem('token')
+      if (mode.endsWith('login')) {
+        const data = customerMode
+          ? await customerLogin(form.email, form.password)
+          : await login(form.email, form.password)
         localStorage.setItem('token', data.access_token)
-        navigate('/waitlist')
+        if (!customerMode && selectedStaffRole && getUserRole() !== selectedStaffRole) {
+          const actualRole = getUserRole()
+          localStorage.removeItem('token')
+          throw new Error(`This account is assigned to ${actualRole}, not ${selectedStaffRole}.`)
+        }
+        navigate(customerMode ? '/customer/account' : getUserRole() === 'admin' ? '/admin' : '/staff')
       } else {
-        await register({ name: form.name, email: form.email, password: form.password, role: form.role })
-        setMode('login')
-        setError('Account created — please log in.')
+        if (customerMode) {
+          await registerCustomer({ name: form.name, email: form.email, password: form.password })
+          const data = await customerLogin(form.email, form.password)
+          localStorage.setItem('token', data.access_token)
+          navigate('/customer/account')
+          return
+        }
       }
     } catch (err) {
       setError(String(err))
@@ -36,10 +53,10 @@ export default function Login() {
     <div className="page" style={{ maxWidth: 420, marginTop: '4rem' }}>
       <div className="card">
         <h1 style={{ marginBottom: '1.5rem' }}>
-          {mode === 'login' ? 'Staff Login' : 'Create Account'}
+          {mode === 'customer-login' ? 'Customer Login' : mode === 'staff-login' ? `${selectedStaffRole ? selectedStaffRole[0].toUpperCase() + selectedStaffRole.slice(1) : 'Staff'} Login` : 'Create Account'}
         </h1>
         <form onSubmit={submit}>
-          {mode === 'register' && (
+          {!mode.endsWith('login') && (
             <div className="field">
               <label>Name</label>
               <input value={form.name} onChange={set('name')} required />
@@ -53,27 +70,24 @@ export default function Login() {
             <label>Password</label>
             <input type="password" value={form.password} onChange={set('password')} required />
           </div>
-          {mode === 'register' && (
-            <div className="field">
-              <label>Role</label>
-              <select value={form.role} onChange={set('role')}>
-                <option value="staff">Staff</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-          )}
           {error && <p className="error">{error}</p>}
           <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? 'Please wait…' : mode === 'login' ? 'Login' : 'Register'}
+            {loading ? 'Please wait…' : mode.endsWith('login') ? 'Login' : 'Register'}
           </button>
         </form>
         <p className="mt2" style={{ fontSize: '0.85rem', color: '#718096', textAlign: 'center' }}>
-          {mode === 'login' ? (
-            <>No account? <button style={{ background:'none', border:'none', color:'#4299e1', cursor:'pointer' }} onClick={() => setMode('register')}>Register</button></>
+          {mode.endsWith('login') && mode.startsWith('customer') ? (
+            <>New here? <button style={{ background:'none', border:'none', color:'#4299e1', cursor:'pointer' }} onClick={() => setMode('customer-register')}>Create account</button></>
+          ) : mode === 'staff-login' ? (
+            <>Staff accounts are created and issued by an administrator.</>
           ) : (
-            <button style={{ background:'none', border:'none', color:'#4299e1', cursor:'pointer' }} onClick={() => setMode('login')}>← Back to login</button>
+            <button style={{ background:'none', border:'none', color:'#4299e1', cursor:'pointer' }} onClick={() => setMode(mode.startsWith('customer') ? 'customer-login' : 'staff-login')}>← Back to login</button>
           )}
         </p>
+        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginTop: '1rem' }}>
+          <button className="btn btn-neutral" type="button" onClick={() => setMode('customer-login')}>Customer</button>
+          <button className="btn btn-neutral" type="button" onClick={() => setMode('staff-login')}>Staff</button>
+        </div>
       </div>
     </div>
   )
