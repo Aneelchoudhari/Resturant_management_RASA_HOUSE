@@ -3,9 +3,15 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
 from app import models, schemas
-from app.auth import hash_password, get_current_admin
+from app.auth import hash_password, get_current_admin, require_roles
 
 router = APIRouter(prefix="/staff", tags=["staff"])
+
+CUSTOMER_LOOKUP_ROLES = (
+    models.StaffRole.admin,
+    models.StaffRole.manager,
+    models.StaffRole.receptionist,
+)
 
 
 @router.get("/", response_model=List[schemas.StaffResponse])
@@ -37,6 +43,14 @@ def create_staff(
     db.commit()
     db.refresh(staff)
     return staff
+
+
+@router.get("/customers", response_model=List[schemas.CustomerResponse])
+def list_customer_choices(
+    db: Session = Depends(get_db),
+    _: models.Staff = Depends(require_roles(*CUSTOMER_LOOKUP_ROLES)),
+):
+    return db.query(models.Customer).order_by(models.Customer.name).all()
 
 
 @router.get("/{staff_id}", response_model=schemas.StaffResponse)
@@ -81,6 +95,17 @@ def delete_staff(
     staff = db.query(models.Staff).filter(models.Staff.id == staff_id).first()
     if not staff:
         raise HTTPException(status_code=404, detail="Staff member not found")
+    db.query(models.AuditLog).filter(models.AuditLog.staff_id == staff.id).update(
+        {models.AuditLog.staff_id: None},
+        synchronize_session=False,
+    )
     db.delete(staff)
-    db.add(models.AuditLog(staff_id=_.id, staff_name=_.name, role=_.role.value, action=f"Deleted staff account {staff.email}", entity_type="staff", entity_id=staff.id))
+    db.add(models.AuditLog(
+        staff_id=None if _.id == staff.id else _.id,
+        staff_name=_.name,
+        role=_.role.value,
+        action=f"Deleted staff account {staff.email}",
+        entity_type="staff",
+        entity_id=staff.id,
+    ))
     db.commit()

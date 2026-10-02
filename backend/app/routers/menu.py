@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db
 from app import models, schemas
-from app.dsa.trie import Trie, CategoryIndex
 from app.auth import get_current_staff, get_current_admin, require_roles
 
 router = APIRouter(prefix="/menu", tags=["menu"])
@@ -45,23 +45,27 @@ def create_menu_item(
 
 @router.get("/search", response_model=List[schemas.MenuItemResponse])
 def search_menu(q: Optional[str] = None, db: Session = Depends(get_db)):
-    """Prefix autocomplete using a Trie — O(k). Empty q returns all items. Public endpoint."""
-    items = db.query(models.MenuItem).all()
+    """Database-backed prefix autocomplete; PostgreSQL remains the source of truth."""
     if not q:
-        return [schemas.MenuItemResponse.model_validate(i) for i in items]
-    trie = Trie()
-    for item in items:
-        trie.insert(item.name, schemas.MenuItemResponse.model_validate(item))
-    return trie.search_prefix(q)
+        return db.query(models.MenuItem).all()
+    escaped_prefix = q.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return (
+        db.query(models.MenuItem)
+        .filter(func.lower(models.MenuItem.name).like(f"{escaped_prefix}%", escape="\\"))
+        .order_by(models.MenuItem.id)
+        .all()
+    )
 
 
 @router.get("/category/{tag}", response_model=List[schemas.MenuItemResponse])
 def get_by_category(tag: str, db: Session = Depends(get_db)):
-    """O(1) category lookup using a hash map (CategoryIndex). Public endpoint."""
-    items = db.query(models.MenuItem).all()
-    index = CategoryIndex()
-    index.build([schemas.MenuItemResponse.model_validate(i) for i in items])
-    return index.get(tag)
+    """Case-insensitive category query backed by a PostgreSQL functional index."""
+    return (
+        db.query(models.MenuItem)
+        .filter(func.lower(models.MenuItem.category) == tag.lower())
+        .order_by(models.MenuItem.id)
+        .all()
+    )
 
 
 @router.get("/{item_id}", response_model=schemas.MenuItemResponse)

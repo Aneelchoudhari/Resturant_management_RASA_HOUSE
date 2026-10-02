@@ -14,7 +14,7 @@ if not DATABASE_URL:
     print("ERROR: SUPABASE_DATABASE_URL not set")
     sys.exit(1)
 
-print(f"Connecting to: {DATABASE_URL[:50]}...")
+print("Connecting to configured database")
 engine = sa.create_engine(DATABASE_URL)
 
 with engine.connect() as conn:

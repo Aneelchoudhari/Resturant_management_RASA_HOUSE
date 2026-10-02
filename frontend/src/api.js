@@ -63,8 +63,8 @@ export const updateStaff = (id, data) =>
 export const deleteStaff = (id) =>
   fetch(`${BASE}/staff/${id}`, { method: 'DELETE', headers: authHeaders() }).then(json)
 
-export const fetchAdminCustomers = () =>
-  fetch(`${BASE}/admin/customers`, { headers: authHeaders() }).then(json)
+export const fetchStaffCustomers = () =>
+  fetch(`${BASE}/staff/customers`, { headers: authHeaders() }).then(json)
 
 export const fetchAdminAudit = () =>
   fetch(`${BASE}/admin/audit`, { headers: authHeaders() }).then(json)
@@ -88,7 +88,9 @@ export const registerCustomer = (data) =>
   }).then(json)
 
 /* ── Waitlist ──────────────────────────────────────────────────────────────── */
-export const fetchWaitlist = () => fetch(`${BASE}/waitlist/`).then(json)
+export const fetchWaitlist = () => fetch(`${BASE}/waitlist/`, { headers: authHeaders() }).then(json)
+
+export const fetchPublicWaitlistStatus = () => fetch(`${BASE}/waitlist/status`).then(json)
 
 export const joinWaitlist = (data) =>
   fetch(`${BASE}/waitlist/join`, {
@@ -103,6 +105,19 @@ export const staffJoinWaitlist = (data) =>
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify(data),
+  }).then(json)
+
+export const removeWaitlistEntry = (entryId) =>
+  fetch(`${BASE}/waitlist/${entryId}/remove`, {
+    method: 'POST',
+    headers: authHeaders(),
+  }).then(json)
+
+export const seatWaitlistEntry = (entryId, tableId) =>
+  fetch(`${BASE}/waitlist/${entryId}/seat`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ table_id: tableId }),
   }).then(json)
 
 /* ── Tables ────────────────────────────────────────────────────────────────── */
@@ -191,11 +206,18 @@ export const toggleMenuItemAvailability = (id) =>
   }).then(json)
 
 /* ── Reservations ──────────────────────────────────────────────────────────── */
-export const createReservation = (data) =>
+export const createReservation = (data, idempotencyKey) =>
   fetch(`${BASE}/reservations/`, {
     method: 'POST',
-    headers: optionalAuthHeaders(),
+    headers: { ...optionalAuthHeaders(), 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(data),
+  }).then(json)
+
+export const commitAllocation = (assignments) =>
+  fetch(`${BASE}/tables/allocate`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ assignments }),
   }).then(json)
 
 export const updateReservationStatus = (id, data) =>
@@ -216,18 +238,18 @@ export const fetchCustomerOrders = () =>
 
 /* ── Orders ────────────────────────────────────────────────────────────────── */
 // Staff (waiter) creates order
-export const createOrder = (data) =>
+export const createOrder = (data, idempotencyKey) =>
   fetch(`${BASE}/orders/`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: { ...authHeaders(), 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(data),
   }).then(json)
 
 // Customer places order from their cart
-export const createCustomerOrder = (data) =>
+export const createCustomerOrder = (data, idempotencyKey) =>
   fetch(`${BASE}/orders/customer`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: { ...authHeaders(), 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(data),
   }).then(json)
 
@@ -261,3 +283,15 @@ export const completePayment = (orderId, method) =>
 // Auth required — chef/inventory (kitchen staff) roles
 export const fetchKitchenQueue = (station) =>
   fetch(`${BASE}/kitchen/${station}`, { headers: authHeaders() }).then(json)
+
+export const claimKitchenTicket = (ticketId) =>
+  fetch(`${BASE}/kitchen/tickets/${ticketId}/claim`, { method: 'POST', headers: authHeaders() }).then(json)
+
+export const startKitchenTicket = (ticketId) =>
+  fetch(`${BASE}/kitchen/tickets/${ticketId}/start`, { method: 'POST', headers: authHeaders() }).then(json)
+
+export const completeKitchenTicket = (ticketId) =>
+  fetch(`${BASE}/kitchen/tickets/${ticketId}/complete`, { method: 'POST', headers: authHeaders() }).then(json)
+
+export const releaseKitchenTicket = (ticketId) =>
+  fetch(`${BASE}/kitchen/tickets/${ticketId}/release`, { method: 'POST', headers: authHeaders() }).then(json)

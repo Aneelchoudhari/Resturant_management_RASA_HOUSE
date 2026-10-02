@@ -139,6 +139,53 @@ class TestTrieInsertSearch:
         result = trie.search_prefix("ste")
         assert len(result) == 1
 
+    def test_reinserting_same_logical_id_updates_instead_of_duplicates(self):
+        trie = Trie()
+        old = make_item("Burger", "mains")
+        old.id = 7
+        updated = make_item("Burrito", "mains")
+        updated.id = 7
+        trie.insert(old.name, old)
+        trie.insert(updated.name, updated)
+        assert [item.name for item in trie.search_prefix("bur")] == ["Burrito"]
+        assert trie.search_prefix("burge") == []
+
+    def test_update_and_delete_prune_stale_prefixes(self):
+        trie = Trie()
+        item = make_item("Steak", "mains")
+        item.id = 8
+        trie.insert(item.name, item)
+        item.name = "Salad"
+        trie.update("Steak", "Salad", item)
+        assert trie.search_prefix("ste") == []
+        assert trie.search_prefix("sal") == [item]
+        assert trie.remove("Salad", item)
+        assert trie.search_prefix("sal") == []
+
+    def test_transient_item_identity_survives_database_id_assignment(self):
+        trie = Trie()
+        index = CategoryIndex()
+        item = make_item("Soup", "starters")
+        trie.insert(item.name, item)
+        index.add(item)
+        item.id = 11
+        item.name = "Stew"
+        item.category = "mains"
+        trie.update("Soup", "Stew", item)
+        index.update(item)
+        assert trie.search_prefix("sou") == []
+        assert trie.search_prefix("ste") == [item]
+        assert index.get("starters") == []
+        assert index.get("mains") == [item]
+
+    def test_large_prefix_search(self):
+        trie = Trie()
+        for item_id in range(10000):
+            item = make_item(f"Dish {item_id:05d}", "mains")
+            item.id = item_id
+            trie.insert(item.name, item)
+        assert len(trie.search_prefix("dish 09")) == 1000
+
 
 # ── CategoryIndex tests ────────────────────────────────────────────────────────
 
@@ -192,3 +239,16 @@ class TestCategoryIndex:
         index.build([make_item("NewItem", "desserts")])
         assert index.get("mains") == []
         assert len(index.get("desserts")) == 1
+
+    def test_add_update_remove_and_duplicate_ids(self):
+        index = CategoryIndex()
+        old = make_item("Soup", "starters")
+        old.id = 10
+        index.add(old)
+        changed = make_item("Soup", "mains")
+        changed.id = 10
+        index.update(changed)
+        assert index.get("starters") == []
+        assert index.get("mains") == [changed]
+        assert index.remove(item_id=10)
+        assert index.get("mains") == []

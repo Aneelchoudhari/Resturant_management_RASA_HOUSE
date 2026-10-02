@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchTables, fetchActiveOrders, updateTableStatus, updateOrderStatus, createOrder, searchMenu, completePayment } from '../api'
 
 const statusLabel = { available: 'Available', occupied: 'Occupied', reserved: 'Reserved', cleaning: 'Cleaning' }
@@ -29,6 +29,7 @@ export default function WaiterDashboard() {
   const [cart, setCart] = useState([])
   const [orderLoading, setOrderLoading] = useState(false)
   const [orderSuccess, setOrderSuccess] = useState(null)
+  const orderIdempotencyKey = useRef(null)
 
   // Payment modal state
   const [showPayModal, setShowPayModal] = useState(false)
@@ -77,6 +78,7 @@ export default function WaiterDashboard() {
   }
 
   const openOrderModal = (table) => {
+    orderIdempotencyKey.current = null
     setSelectedTable(table)
     setCart([])
     setMenuSearch('')
@@ -87,6 +89,7 @@ export default function WaiterDashboard() {
   }
 
   const addToCart = (item) => {
+    orderIdempotencyKey.current = null
     setCart(curr => {
       const existing = curr.find(e => e.menu_item_id === item.id)
       if (existing) return curr.map(e => e.menu_item_id === item.id ? { ...e, quantity: e.quantity + 1 } : e)
@@ -99,12 +102,14 @@ export default function WaiterDashboard() {
     setOrderLoading(true)
     setActionError('')
     try {
+      orderIdempotencyKey.current ||= crypto.randomUUID()
       const result = await createOrder({
         table_id: selectedTable.id,
         order_type: 'dine_in',
         items: cart.map(({ menu_item_id, quantity }) => ({ menu_item_id, quantity })),
-      })
+      }, orderIdempotencyKey.current)
       setOrderSuccess(result.order || result)
+      orderIdempotencyKey.current = null
       setCart([])
       // Mark table occupied
       await updateTableStatus(selectedTable.id, 'occupied')
@@ -337,11 +342,11 @@ export default function WaiterDashboard() {
                       <div key={item.menu_item_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0', borderBottom: '1px solid #f1f5f9' }}>
                         <span>{item.name}</span>
                         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                          <button onClick={() => setCart(c => c.map(e => e.menu_item_id === item.menu_item_id ? { ...e, quantity: Math.max(1, e.quantity - 1) } : e))} style={{ background: '#f1f5f9', border: 'none', width: 28, height: 28, borderRadius: 6, cursor: 'pointer', fontWeight: 700 }}>−</button>
+                          <button onClick={() => { orderIdempotencyKey.current = null; setCart(c => c.map(e => e.menu_item_id === item.menu_item_id ? { ...e, quantity: Math.max(1, e.quantity - 1) } : e)) }} style={{ background: '#f1f5f9', border: 'none', width: 28, height: 28, borderRadius: 6, cursor: 'pointer', fontWeight: 700 }}>−</button>
                           <span style={{ fontFamily: 'monospace', minWidth: 20, textAlign: 'center' }}>{item.quantity}</span>
-                          <button onClick={() => setCart(c => c.map(e => e.menu_item_id === item.menu_item_id ? { ...e, quantity: e.quantity + 1 } : e))} style={{ background: '#f1f5f9', border: 'none', width: 28, height: 28, borderRadius: 6, cursor: 'pointer', fontWeight: 700 }}>+</button>
+                          <button onClick={() => { orderIdempotencyKey.current = null; setCart(c => c.map(e => e.menu_item_id === item.menu_item_id ? { ...e, quantity: e.quantity + 1 } : e)) }} style={{ background: '#f1f5f9', border: 'none', width: 28, height: 28, borderRadius: 6, cursor: 'pointer', fontWeight: 700 }}>+</button>
                           <span style={{ color: '#64748b', minWidth: 60, textAlign: 'right' }}>₹{(item.price * item.quantity).toFixed(0)}</span>
-                          <button onClick={() => setCart(c => c.filter(e => e.menu_item_id !== item.menu_item_id))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
+                          <button onClick={() => { orderIdempotencyKey.current = null; setCart(c => c.filter(e => e.menu_item_id !== item.menu_item_id)) }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
                         </div>
                       </div>
                     ))}

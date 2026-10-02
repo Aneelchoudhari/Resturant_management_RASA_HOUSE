@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchTables, fetchAllocation, fetchCombine } from '../api'
+import { fetchTables, fetchAllocation, fetchCombine, commitAllocation } from '../api'
 
 const statusClass = (status) =>
-  ({ available: 'table-available', occupied: 'table-occupied', reserved: 'table-reserved' }[status] || 'table-available')
+  ({ available: 'table-available', occupied: 'table-occupied', reserved: 'table-reserved', cleaning: 'table-cleaning' }[status] || 'table-cleaning')
 
 export default function TableMap() {
   const [tables, setTables] = useState([])
   const [allocation, setAllocation] = useState(null)
+  const [savedAssignments, setSavedAssignments] = useState(null)
+  const [savingAllocation, setSavingAllocation] = useState(false)
   const [partySize, setPartySize] = useState(4)
   const [combine, setCombine] = useState(null)
   const [error, setError] = useState('')
@@ -27,6 +29,22 @@ export default function TableMap() {
     setError('')
     setCombine(null)
     try { setCombine(await fetchCombine(partySize)) } catch (e) { setError(String(e)) }
+  }
+
+  const saveAllocation = async () => {
+    if (!allocation?.assignments?.length) return
+    setError('')
+    setSavingAllocation(true)
+    try {
+      const saved = await commitAllocation(allocation.assignments.map(({ reservation_id, table_id }) => ({ reservation_id, table_id })))
+      setSavedAssignments(saved)
+      setTables(await fetchTables())
+      setAllocation(await fetchAllocation())
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setSavingAllocation(false)
+    }
   }
 
   return (
@@ -67,15 +85,16 @@ export default function TableMap() {
       {/* Allocation result */}
       {allocation && (
         <div className="card">
-          <h2>Allocation Plan</h2>
-          {allocation.assignments?.length === 0 && allocation.unassigned?.length === 0 ? (
+          <h2>Allocation Proposal</h2>
+          <p style={{ color: '#64748b' }}>Preview only. Assignments are not saved until you apply this proposal.</p>
+          {allocation.assignments?.length === 0 && allocation.unassigned_reservation_ids?.length === 0 ? (
             <p className="empty">No pending reservations to allocate</p>
           ) : (
             <>
               {allocation.assignments?.length > 0 && (
                 <>
                   <p style={{ marginBottom: '0.5rem', color: '#276749', fontWeight: 600 }}>
-                    ✓ {allocation.assignments.length} reservation(s) assigned
+                    {allocation.assignments.length} reservation(s) proposed
                   </p>
                   <table>
                     <thead><tr><th>Reservation ID</th><th>Table ID</th></tr></thead>
@@ -90,13 +109,25 @@ export default function TableMap() {
                   </table>
                 </>
               )}
-              {allocation.unassigned?.length > 0 && (
+              {allocation.unassigned_reservation_ids?.length > 0 && (
                 <p className="mt1" style={{ color: '#c53030' }}>
-                  ✗ Unassigned reservations: {allocation.unassigned.join(', ')}
+                  ✗ Unassigned reservations: {allocation.unassigned_reservation_ids.join(', ')}
                 </p>
+              )}
+              {allocation.assignments?.length > 0 && (
+                <button className="btn btn-primary" onClick={saveAllocation} disabled={savingAllocation}>
+                  {savingAllocation ? 'Saving assignments…' : 'Apply proposal'}
+                </button>
               )}
             </>
           )}
+        </div>
+      )}
+
+      {savedAssignments && (
+        <div className="card" role="status">
+          <h2>Assignments saved</h2>
+          <p>{savedAssignments.length} reservation(s) now have persistent table assignments.</p>
         </div>
       )}
 

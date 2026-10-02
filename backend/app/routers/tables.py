@@ -65,6 +65,10 @@ def update_table(
         raise HTTPException(status_code=404, detail="Table not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(table, field, value)
+    if table.status != models.TableStatus.occupied:
+        table.current_customer_id = None
+        table.current_guest_name = None
+        table.current_party_size = None
     db.commit()
     db.refresh(table)
     return table
@@ -82,6 +86,10 @@ def update_table_status(
     if not table:
         raise HTTPException(status_code=404, detail="Table not found")
     table.status = payload.status
+    if table.status != models.TableStatus.occupied:
+        table.current_customer_id = None
+        table.current_guest_name = None
+        table.current_party_size = None
     db.commit()
     db.refresh(table)
     return table

@@ -1,19 +1,19 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr, field_validator
-from app.models import TableStatus, ReservationStatus, OrderStatus, PaymentStatus, PaymentMethod, StaffRole
+from pydantic import BaseModel, EmailStr, Field, field_serializer, field_validator, model_validator
+from app.models import TableStatus, ReservationStatus, OrderStatus, PaymentStatus, PaymentMethod, StaffRole, WaitlistStatus
 
 
 # ── Table ──────────────────────────────────────────────────────────────────────
 
 class TableCreate(BaseModel):
     number: int
-    capacity: int
+    capacity: int = Field(gt=0)
 
 
 class TableUpdate(BaseModel):
     number: Optional[int] = None
-    capacity: Optional[int] = None
+    capacity: Optional[int] = Field(default=None, gt=0)
     status: Optional[TableStatus] = None
 
 
@@ -29,11 +29,27 @@ class TableResponse(BaseModel):
 # ── Reservation ────────────────────────────────────────────────────────────────
 
 class ReservationCreate(BaseModel):
-    guest_name: str
-    party_size: int
+    guest_name: str = Field(min_length=1, max_length=200)
+    party_size: int = Field(gt=0, le=100)
     start_time: datetime
-    duration_minutes: int = 60
-    table_id: Optional[int] = None
+    duration_minutes: int = Field(default=60, gt=0, le=1440)
+    table_id: Optional[int] = Field(default=None, gt=0)
+    waitlist_priority_tier: int = Field(default=3, ge=1, le=3)
+
+    @field_validator("guest_name")
+    @classmethod
+    def guest_name_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Guest name cannot be blank")
+        return value
+
+    @field_validator("start_time")
+    @classmethod
+    def normalize_start_time(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("Reservation time must include a timezone")
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 class CustomerCreate(BaseModel):
@@ -60,7 +76,27 @@ class CustomerResponse(BaseModel):
 
 class ReservationUpdate(BaseModel):
     status: Optional[ReservationStatus] = None
-    table_id: Optional[int] = None
+    table_id: Optional[int] = Field(default=None, gt=0)
+    start_time: Optional[datetime] = None
+    duration_minutes: Optional[int] = Field(default=None, gt=0, le=1440)
+
+    @field_validator("start_time")
+    @classmethod
+    def normalize_start_time(cls, value: Optional[datetime]) -> Optional[datetime]:
+        if value is None:
+            return value
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("Reservation time must include a timezone")
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+    @model_validator(mode="after")
+    def validate_update_fields(self):
+        for field in ("status", "start_time", "duration_minutes"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        if not self.model_fields_set:
+            raise ValueError("At least one reservation field must be updated")
+        return self
 
 
 class ReservationResponse(BaseModel):
@@ -74,14 +110,26 @@ class ReservationResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @field_serializer("start_time")
+    def serialize_start_time(self, value: datetime) -> str:
+        return value.replace(tzinfo=timezone.utc).isoformat()
+
 
 # ── WaitlistEntry ──────────────────────────────────────────────────────────────
 
 class WaitlistEntryCreate(BaseModel):
-    guest_name: str
-    party_size: int
-    priority_tier: int = 3  # 1=VIP, 2=Reservation, 3=Walk-in
+    guest_name: str = Field(min_length=1, max_length=200)
+    party_size: int = Field(gt=0, le=100)
+    priority_tier: int = Field(default=3, ge=1, le=3)  # 1=VIP, 2=Reservation, 3=Walk-in
     customer_id: Optional[int] = None  # link to customer account for loyalty points
+
+    @field_validator("guest_name")
+    @classmethod
+    def guest_name_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Guest name cannot be blank")
+        return value
 
 
 class WaitlistEntryResponse(BaseModel):
@@ -92,6 +140,9 @@ class WaitlistEntryResponse(BaseModel):
     joined_at: datetime
     customer_id: Optional[int] = None
     entry_type: Optional[str] = "walk_in"  # nullable in DB for pre-migration rows
+    reservation_id: Optional[int] = None
+    status: WaitlistStatus = WaitlistStatus.waiting
+    seated_table_id: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -293,9 +344,10 @@ class TableStatusUpdate(BaseModel):
 
 class AdminTableAllocateRequest(BaseModel):
     """Admin directly allocates a table to a customer (by table_id + customer_id or guest_name)."""
-    table_id: int
-    customer_id: Optional[int] = None
-    guest_name: Optional[str] = None  # used when allocating to walk-in guest
+    table_id: int = Field(gt=0)
+    customer_id: Optional[int] = Field(default=None, gt=0)
+    guest_name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    party_size: int = Field(default=1, gt=0, le=100)
 
 
 class AdminTableAllocateResponse(BaseModel):
@@ -304,5 +356,27 @@ class AdminTableAllocateResponse(BaseModel):
     status: TableStatus
     customer_id: Optional[int]
     guest_name: Optional[str]
+    party_size: int
 
     model_config = {"from_attributes": True}
+
+
+class WaitlistSeatRequest(BaseModel):
+    table_id: int = Field(gt=0)
+
+
+class ReservationTableAllocateRequest(BaseModel):
+    reservation_id: int = Field(gt=0)
+    table_id: int = Field(gt=0)
+
+
+class AllocationPlanCommitRequest(BaseModel):
+    assignments: List[ReservationTableAllocateRequest] = Field(min_length=1)
+
+    @field_validator("assignments")
+    @classmethod
+    def unique_reservations(cls, value: List[ReservationTableAllocateRequest]):
+        reservation_ids = [assignment.reservation_id for assignment in value]
+        if len(reservation_ids) != len(set(reservation_ids)):
+            raise ValueError("A reservation may appear only once in an allocation request")
+        return value

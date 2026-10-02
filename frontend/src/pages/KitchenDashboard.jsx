@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchKitchenQueue, fetchActiveOrders, updateOrderStatus } from '../api'
+import { fetchKitchenQueue, fetchActiveOrders, updateOrderStatus, claimKitchenTicket, startKitchenTicket, completeKitchenTicket, releaseKitchenTicket } from '../api'
 import { getUserRole } from '../auth'
 
 const STATIONS = ['grill', 'dessert', 'drinks', 'sides']
@@ -54,6 +54,19 @@ export default function KitchenDashboard() {
     setActionError('')
     try {
       await updateOrderStatus(orderId, status)
+      await load()
+    } catch (e) {
+      setActionError(String(e))
+    }
+  }
+
+  const changeTicket = async (ticket, action) => {
+    setActionError('')
+    try {
+      if (action === 'claim') await claimKitchenTicket(ticket.ticket_id)
+      if (action === 'start') await startKitchenTicket(ticket.ticket_id)
+      if (action === 'complete') await completeKitchenTicket(ticket.ticket_id)
+      if (action === 'release') await releaseKitchenTicket(ticket.ticket_id)
       await load()
     } catch (e) {
       setActionError(String(e))
@@ -235,15 +248,25 @@ export default function KitchenDashboard() {
                   <th>Order</th>
                   <th>Item</th>
                   <th>Category</th>
+                  <th>Status</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {queue.items.map((item, i) => (
-                  <tr key={i}>
+                  <tr key={item.ticket_id}>
                     <td style={{ fontWeight: 700 }}>{i + 1}</td>
                     <td><span className="badge badge-blue">#{item.order_id}</span></td>
-                    <td><strong>{item.name}</strong></td>
+                    <td><strong>{item.name}</strong> <small>unit {item.unit_number}</small></td>
                     <td><span className="badge badge-gray">{item.category}</span></td>
+                    <td><span className="badge badge-blue">{item.status}</span></td>
+                    <td>
+                      {item.status === 'queued' && <button className="btn btn-primary" onClick={() => changeTicket(item, 'claim')}>Claim</button>}
+                      {item.status === 'claimed' && item.claimed_by_me && <button className="btn btn-primary" onClick={() => changeTicket(item, 'start')}>Start</button>}
+                      {item.status === 'processing' && item.claimed_by_me && <button className="btn btn-success" onClick={() => changeTicket(item, 'complete')}>Complete</button>}
+                      {['claimed', 'processing'].includes(item.status) && item.claimed_by_me && <button className="btn btn-neutral" onClick={() => changeTicket(item, 'release')}>Release</button>}
+                      {['claimed', 'processing'].includes(item.status) && !item.claimed_by_me && <span>Claimed by another staff member</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

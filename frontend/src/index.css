@@ -103,6 +103,7 @@ tr:hover td { background: #f7fafc; }
 .table-available  { background: #c6f6d5; border-color: #68d391; color: #276749; }
 .table-occupied   { background: #fed7d7; border-color: #fc8181; color: #742a2a; }
 .table-reserved   { background: #fefcbf; border-color: #f6e05e; color: #744210; }
+.table-cleaning   { background: #e2e8f0; border-color: #94a3b8; color: #334155; }
 
 /* ── Priority bar ─────────────────────────────────────────────────────────── */
 .priority-high   { color: #276749; font-weight: 700; }

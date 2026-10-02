@@ -11,11 +11,16 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override sqlalchemy.url with DATABASE_URL env var
-database_url = os.getenv("SUPABASE_DATABASE_URL") or os.getenv("DATABASE_URL")
-if database_url:
-    # Alembic uses ConfigParser interpolation; preserve URL escapes such as %40.
-    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+app_env = os.getenv("APP_ENV", "development").lower()
+if app_env == "production":
+    database_url = os.getenv("SUPABASE_DATABASE_URL") or os.getenv("DATABASE_URL")
+else:
+    database_url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+if not database_url:
+    raise RuntimeError("DATABASE_URL or TEST_DATABASE_URL must be set before running Alembic")
+
+# Alembic uses ConfigParser interpolation; preserve URL escapes such as %40.
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 # Import all models so Alembic can autogenerate migrations
 from app.database import Base

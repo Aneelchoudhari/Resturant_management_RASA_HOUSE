@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { createReservation, joinWaitlist, staffJoinWaitlist } from '../api'
+import { useRef, useState } from 'react'
+import { createReservation } from '../api'
 import { isStaffUser, getUserRole } from '../auth'
 
 const VIP_ROLES = ['manager', 'receptionist', 'admin']
@@ -19,6 +19,7 @@ export default function ReservationForm() {
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const idempotencyKey = useRef(null)
 
   const set = (k) => (e) =>
     setForm((f) => ({
@@ -34,33 +35,16 @@ export default function ReservationForm() {
     setResult(null)
     setLoading(true)
     try {
-      // 1. Create reservation (feeds into interval scheduler)
+      idempotencyKey.current ||= crypto.randomUUID()
       const reservation = await createReservation({
         guest_name: form.guest_name,
         party_size: form.party_size,
         start_time: new Date(form.start_time).toISOString(),
         duration_minutes: form.duration_minutes,
-      })
-      // 2. Add to priority waitlist
-      //    Staff with VIP roles use the authenticated endpoint (allows tier 1 & 2)
-      //    Other cases fall back to the public walk-in endpoint (tier 3)
-      let waitlistEntry
-      if (staffMode && canSetPriority) {
-        waitlistEntry = await staffJoinWaitlist({
-          guest_name: form.guest_name,
-          party_size: form.party_size,
-          priority_tier: form.priority_tier,
-        })
-      } else {
-        // Customer reservations go in as Reservation tier (2) via staff endpoint if possible,
-        // but customers are not staff — use walk-in tier so public endpoint is valid
-        waitlistEntry = await joinWaitlist({
-          guest_name: form.guest_name,
-          party_size: form.party_size,
-          priority_tier: 3, // public endpoint only accepts walk-in
-        })
-      }
-      setResult({ reservation, waitlistEntry })
+        waitlist_priority_tier: staffMode && canSetPriority ? form.priority_tier : 3,
+      }, idempotencyKey.current)
+      setResult({ reservation })
+      idempotencyKey.current = null
       setForm({ guest_name: '', party_size: 2, start_time: '', duration_minutes: 60, priority_tier: 2 })
     } catch (err) {
       setError(String(err))
@@ -123,7 +107,7 @@ export default function ReservationForm() {
 
       {result && (
         <div className="card" style={{ borderLeft: '4px solid #48bb78' }}>
-          <h2 style={{ color: '#276749' }}>✓ Reservation Confirmed</h2>
+          <h2 style={{ color: '#276749' }}>✓ Reservation {result.reservation.status === 'confirmed' ? 'Confirmed' : 'Created'}</h2>
           <p className="mt1"><strong>Reservation ID:</strong> #{result.reservation.id}</p>
           <p><strong>Guest:</strong> {result.reservation.guest_name}</p>
           <p><strong>Party:</strong> {result.reservation.party_size} guests</p>
@@ -132,7 +116,7 @@ export default function ReservationForm() {
           </p>
           {staffMode && (
             <p className="mt1" style={{ fontSize: '0.8rem', color: '#718096' }}>
-              Waitlist queue position added. Run the Table Allocator on the Tables page to assign a table.
+              Added to the waitlist with this reservation. Run the allocator preview on the Tables page and save its assignments.
             </p>
           )}
           {!staffMode && (

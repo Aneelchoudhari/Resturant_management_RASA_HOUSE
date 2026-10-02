@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from bisect import bisect_left
 from typing import List
 
 
@@ -23,30 +24,39 @@ class Assignment:
 
 
 def _is_free(intervals: list, start: float, end: float) -> bool:
+    """Check overlap in a start-sorted, non-overlapping interval list in O(log k).
+
+    Exact boundary touch is allowed; intervals are half-open [start, end).
     """
-    Return True if [start, end) does not overlap any interval in the list.
-    Two intervals overlap when NOT (end <= other_start OR start >= other_end).
-    Exact boundary touch (end == other_start) is allowed — back-to-back bookings are fine.
-    """
-    for s, e in intervals:
-        if not (end <= s or start >= e):
-            return False
-    return True
+    return _free_position(intervals, start, end) is not None
+
+
+def _free_position(intervals: list, start: float, end: float) -> int | None:
+    """Find a valid insertion point in a start-sorted, non-overlapping schedule."""
+    position = bisect_left(intervals, (start, float("-inf")))
+    if position and intervals[position - 1][1] > start:
+        return None
+    if position < len(intervals) and intervals[position][0] < end:
+        return None
+    return position
 
 
 def allocate(
     reservations: List[ReservationSlot],
     tables: List[TableSlot],
+    existing_assignments: dict[int, list[tuple[float, float]]] | None = None,
 ) -> dict:
     """
-    Greedy interval-scheduling allocator.
+    Greedy interval scheduler: start-time order, best-fit capacity, first-free table.
 
-    Algorithm  — O(n log n):
-      1. Sort reservations by start time.
-      2. For each reservation in that order, scan eligible tables (capacity >= party_size)
-         sorted by capacity ascending (best-fit: wastes the least seats).
-      3. Assign the first eligible table that is free during [start, end).
-      4. If no table is free/large enough, add to unassigned list.
+    Sort reservations by start and tables by capacity once. For each reservation,
+    scan tables in best-fit order and use binary search to test its sorted interval
+    list. The first suitable free table is selected. Boundary-touching bookings
+    remain allowed. List insertion can still be O(k) when a new interval falls
+    before existing intervals; common chronological appends are O(1). With R
+    reservations and T tables, worst-case work is O(R log R + T log T + R*T*log R
+    + R^2) due to candidate scans and list insertion; typical chronological plans
+    avoid the full interval scan and append costs.
 
     Args:
         reservations: list of ReservationSlot (id, start, end, party_size)
@@ -62,24 +72,29 @@ def allocate(
         return {"assignments": [], "unassigned": [r.reservation_id for r in reservations]}
 
     sorted_reservations = sorted(reservations, key=lambda r: r.start)
+    sorted_tables = sorted(tables, key=lambda t: t.capacity)
+    capacities = [table.capacity for table in sorted_tables]
 
     # table_id -> list of (start, end) booked intervals
-    schedule: dict = {t.table_id: [] for t in tables}
+    existing_assignments = existing_assignments or {}
+    schedule: dict = {
+        table.table_id: sorted(existing_assignments.get(table.table_id, []))
+        for table in sorted_tables
+    }
 
     assignments: List[Assignment] = []
     unassigned: List[int] = []
 
     for res in sorted_reservations:
         # Best-fit: smallest table that still fits the party
-        eligible = sorted(
-            [t for t in tables if t.capacity >= res.party_size],
-            key=lambda t: t.capacity,
-        )
+        first_eligible = bisect_left(capacities, res.party_size)
 
         placed = False
-        for table in eligible:
-            if _is_free(schedule[table.table_id], res.start, res.end):
-                schedule[table.table_id].append((res.start, res.end))
+        for table_index in range(first_eligible, len(sorted_tables)):
+            table = sorted_tables[table_index]
+            position = _free_position(schedule[table.table_id], res.start, res.end)
+            if position is not None:
+                schedule[table.table_id].insert(position, (res.start, res.end))
                 assignments.append(Assignment(reservation_id=res.reservation_id, table_id=table.table_id))
                 placed = True
                 break

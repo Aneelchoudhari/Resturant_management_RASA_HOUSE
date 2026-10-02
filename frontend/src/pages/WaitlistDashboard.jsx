@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchWaitlist, joinWaitlist, staffJoinWaitlist, fetchAdminCustomers } from '../api'
+import { fetchPublicWaitlistStatus, fetchWaitlist, fetchTables, joinWaitlist, staffJoinWaitlist, fetchStaffCustomers, removeWaitlistEntry, seatWaitlistEntry } from '../api'
 import { getUserRole } from '../auth'
 
 const TIER_INFO = {
@@ -16,7 +16,11 @@ export default function WaitlistDashboard({ readOnly = false }) {
   const canAddVip = !readOnly && VIP_ROLES.includes(role)
 
   const [queue, setQueue] = useState([])
+  const [publicStatus, setPublicStatus] = useState(null)
+  const [tables, setTables] = useState([])
+  const [selectedTables, setSelectedTables] = useState({})
   const [error, setError] = useState('')
+  const [actionMessage, setActionMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
   // Walk-in form (public)
@@ -31,17 +35,22 @@ export default function WaitlistDashboard({ readOnly = false }) {
 
   const load = useCallback(async () => {
     try {
-      const data = await fetchWaitlist()
-      setQueue(data)
+      if (readOnly) {
+        setPublicStatus(await fetchPublicWaitlistStatus())
+      } else {
+        const [waitlist, availableTables] = await Promise.all([fetchWaitlist(), fetchTables()])
+        setQueue(waitlist)
+        setTables(availableTables)
+      }
     } catch (e) {
       setError(String(e))
     }
-  }, [])
+  }, [readOnly])
 
   useEffect(() => {
     load()
     if (canAddVip) {
-      fetchAdminCustomers().then(setCustomers).catch(() => setCustomers([]))
+      fetchStaffCustomers().then(setCustomers).catch(() => setCustomers([]))
     }
   }, [load, canAddVip])
 
@@ -88,6 +97,42 @@ export default function WaitlistDashboard({ readOnly = false }) {
       setError(String(err))
     } finally {
       setStaffLoading(false)
+    }
+  }
+
+  const removeEntry = async (entry) => {
+    setError('')
+    setActionMessage('')
+    try {
+      const result = await removeWaitlistEntry(entry.id)
+      setActionMessage(`${result.guest_name} was removed from the waitlist.`)
+      await load()
+    } catch (err) {
+      setError(String(err))
+    }
+  }
+
+  const seatEntry = async (entry) => {
+    setError('')
+    setActionMessage('')
+    const tableId = Number(selectedTables[entry.id])
+    if (!tableId) {
+      setError('Select an available table with enough capacity.')
+      return
+    }
+    try {
+      const result = await seatWaitlistEntry(entry.id, tableId)
+      const table = tables.find((item) => item.id === result.seated_table_id)
+      setActionMessage(`${result.guest_name} was seated at Table ${table?.number ?? result.seated_table_id}.`)
+      setSelectedTables((current) => {
+        const next = { ...current }
+        delete next[entry.id]
+        return next
+      })
+      await load()
+    } catch (err) {
+      setError(String(err))
+      await load()
     }
   }
 
@@ -180,6 +225,7 @@ export default function WaitlistDashboard({ readOnly = false }) {
       )}
 
       {error && <p className="error">{error}</p>}
+      {actionMessage && <p className="success" role="status">{actionMessage}</p>}
 
       {/* ── Priority legend ────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -196,10 +242,12 @@ export default function WaitlistDashboard({ readOnly = false }) {
       {/* ── Queue ─────────────────────────────────────────────────────────── */}
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-          <h2 style={{ margin: 0 }}>Current Queue ({queue.length})</h2>
+          <h2 style={{ margin: 0 }}>{readOnly ? 'Guests in Queue' : `Current Queue (${queue.length})`}</h2>
           <button className="btn btn-neutral" onClick={load}>↻ Refresh</button>
         </div>
-        {queue.length === 0 ? (
+        {readOnly ? (
+          <p className="empty">{publicStatus ? `${publicStatus.queue_size} guests currently waiting` : 'Loading queue status…'}</p>
+        ) : queue.length === 0 ? (
           <p className="empty">Queue is empty</p>
         ) : (
           <table>
@@ -209,18 +257,45 @@ export default function WaitlistDashboard({ readOnly = false }) {
                 <th>Guest</th>
                 <th>Party</th>
                 <th>Type</th>
+                <th>Status</th>
+                {!readOnly && <th>Table</th>}
+                {!readOnly && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
-              {queue.map((entry, i) => {
-                const tier = entry.entry?.priority_tier ?? 3
+              {queue.map((item) => {
+                const entry = item.entry
+                const tier = entry?.priority_tier ?? 3
                 const info = TIER_INFO[tier] || TIER_INFO[3]
                 return (
-                  <tr key={entry.entry?.id ?? i}>
-                    <td><strong>#{i + 1}</strong></td>
-                    <td>{entry.entry?.guest_name}</td>
-                    <td>{entry.entry?.party_size} pax</td>
+                  <tr key={entry?.id}>
+                    <td><strong>#{item.position}</strong></td>
+                    <td>{entry?.guest_name}</td>
+                    <td>{entry?.party_size} pax</td>
                     <td><span className={`badge ${info.badge}`}>{info.label}</span></td>
+                    <td><span className="badge badge-blue">{entry?.status}</span></td>
+                    {!readOnly && (
+                      <td>
+                        <select
+                          aria-label={`Table for ${entry?.guest_name}`}
+                          value={selectedTables[entry.id] || ''}
+                          onChange={(event) => setSelectedTables((current) => ({ ...current, [entry.id]: event.target.value }))}
+                        >
+                          <option value="">Select table</option>
+                          {tables.filter((table) => table.status === 'available' && table.capacity >= entry.party_size).map((table) => (
+                            <option key={table.id} value={table.id}>T{table.number} · {table.capacity} seats</option>
+                          ))}
+                        </select>
+                      </td>
+                    )}
+                    {!readOnly && (
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.35rem' }}>
+                          <button className="btn btn-success" onClick={() => seatEntry(entry)}>Seat</button>
+                          <button className="btn btn-neutral" onClick={() => removeEntry(entry)}>Remove</button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 )
               })}

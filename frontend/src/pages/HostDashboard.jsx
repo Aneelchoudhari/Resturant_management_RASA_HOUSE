@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchTables, fetchReservations, fetchWaitlist, updateTableStatus, staffJoinWaitlist, joinWaitlist, updateReservationStatus, fetchAllocation, fetchAdminCustomers } from '../api'
+import { fetchTables, fetchReservations, fetchWaitlist, updateTableStatus, staffJoinWaitlist, joinWaitlist, updateReservationStatus, fetchAllocation, fetchStaffCustomers } from '../api'
 
 export default function HostDashboard() {
   const [tables, setTables] = useState([])
@@ -18,7 +18,7 @@ export default function HostDashboard() {
   const load = useCallback(async () => {
     setError('')
     try {
-      const [t, r, w, c] = await Promise.all([fetchTables(), fetchReservations(), fetchWaitlist(), fetchAdminCustomers().catch(() => [])])
+      const [t, r, w, c] = await Promise.all([fetchTables(), fetchReservations(), fetchWaitlist(), fetchStaffCustomers().catch(() => [])])
       setTables(t)
       setReservations(r)
       setWaitlist(w)
@@ -143,7 +143,7 @@ export default function HostDashboard() {
           )}
           {allocation && (
             <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#f0fdf4', borderRadius: 8, border: '1px solid #86efac' }}>
-              <strong style={{ color: '#166534' }}>Allocation plan:</strong>
+              <strong style={{ color: '#166534' }}>Allocation preview (not saved):</strong>
               {allocation.assignments?.length === 0 ? <span style={{ color: '#166534', marginLeft: '0.5rem' }}>No pending reservations to assign.</span> : (
                 <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.2rem' }}>
                   {allocation.assignments?.map(a => (

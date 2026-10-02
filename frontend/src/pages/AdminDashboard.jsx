@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  fetchAdminAudit, fetchAdminCustomers, fetchAdminReports,
+  fetchAdminAudit, fetchStaffCustomers, fetchAdminReports,
   fetchMenuItems, fetchOrders, fetchReservations, fetchStaff,
   fetchTables, fetchWaitlist, adminCreateTable, adminAllocateTable, staffJoinWaitlist,
 } from '../api'
@@ -50,7 +50,7 @@ export default function AdminDashboard() {
     setError('')
     try {
       const [reservations, orders, menu, tables, staff, waitlist, customers, audit, reports] = await Promise.all([
-        fetchReservations(), fetchOrders(), fetchMenuItems(), fetchTables(), fetchStaff(), fetchWaitlist(), fetchAdminCustomers(), fetchAdminAudit(), fetchAdminReports(),
+        fetchReservations(), fetchOrders(), fetchMenuItems(), fetchTables(), fetchStaff(), fetchWaitlist(), fetchStaffCustomers(), fetchAdminAudit(), fetchAdminReports(),
       ])
       setData({ reservations, orders, menu, tables, staff, waitlist, customers, audit, reports })
     } catch (err) {
@@ -104,6 +104,7 @@ export default function AdminDashboard() {
         table_id: Number(allocForm.table_id),
         customer_id: allocForm.customer_id ? Number(allocForm.customer_id) : null,
         guest_name: allocForm.guest_name || null,
+        party_size: Number(allocForm.party_size || 1),
       }
       const result = await adminAllocateTable(payload)
       setAllocMsg(`Table #${result.table_number} allocated to ${result.guest_name}. Status: ${result.status}.`)
@@ -215,7 +216,7 @@ export default function AdminDashboard() {
             <div><p className="admin-kicker">Master Control</p><h2>Allocate Table</h2></div>
           </div>
           <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1rem' }}>
-            Admin can assign any available table to any customer. No restrictions apply.
+            Admin can seat a customer at an available table. Existing reservations are protected.
           </p>
           <form onSubmit={handleAllocate}>
             <div className="row">
@@ -227,13 +228,22 @@ export default function AdminDashboard() {
                   required
                 >
                   <option value="">— Select table —</option>
-                  {data.tables.map((t) => (
+                  {availableTables.map((t) => (
                     <option key={t.id} value={t.id}>
                       T{t.number} ({t.capacity} seats) — {t.status}
                     </option>
                   ))}
                 </select>
               </div>
+            </div>
+            <div className="field">
+              <label>Party Size</label>
+              <input
+                type="number" min="1" max="100"
+                value={allocForm.party_size || 1}
+                onChange={(e) => setAllocForm({ ...allocForm, party_size: e.target.value })}
+                required
+              />
             </div>
             <div className="row">
               <div className="field">

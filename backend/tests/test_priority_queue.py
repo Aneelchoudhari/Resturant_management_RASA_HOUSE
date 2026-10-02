@@ -157,6 +157,35 @@ class TestToSortedList:
         assert result[0][0] == 7
 
 
+def test_repeated_id_upserts_without_duplicate_heap_entries():
+    heap = MinHeap()
+    heap.push(10, 1, "old")
+    heap.push(5, 2, "other")
+    heap.push(1, 1, "updated")
+    assert heap.size() == 2
+    assert heap.pop() == (1, 1, "updated")
+
+
+def test_update_and_remove_keep_position_index_consistent():
+    heap = MinHeap()
+    for item_id, score in enumerate((8, 3, 6, 1, 7)):
+        heap.push(score, item_id, item_id)
+    heap.update(2, 0, "priority")
+    assert heap.pop() == (0, 2, "priority")
+    assert heap.remove(3) == 3
+    assert all(item_id != 3 for _, item_id, _ in heap.to_sorted_list())
+
+
+def test_heapify_large_dataset_and_duplicate_ids():
+    heap = MinHeap()
+    heap.heapify((float(50000 - item_id), item_id, item_id) for item_id in range(50000))
+    assert heap.size() == 50000
+    assert heap.peek() == (1.0, 49999, 49999)
+    heap.heapify([(5, 1, "old"), (1, 2, "other"), (3, 1, "last")])
+    assert heap.size() == 2
+    assert heap.remove(1) == "last"
+
+
 # ── compute_priority_score tests ───────────────────────────────────────────────
 
 class TestPriorityScore:

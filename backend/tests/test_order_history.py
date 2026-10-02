@@ -167,3 +167,16 @@ class TestBSTRangeQuery:
         # from > to — no valid keys can satisfy this
         result = self.bst.range_query(date(2024, 6, 1), date(2024, 1, 1))
         assert result == []
+
+
+@pytest.mark.parametrize("keys", [range(20000), range(20000, 0, -1)])
+def test_avl_handles_sorted_and_reverse_input_without_recursion(keys):
+    bst = BST()
+    for key in keys:
+        bst.insert(key, key)
+    assert bst.size() == 20000
+    assert bst.search(19999 if keys.start == 0 else 1) == [19999 if keys.start == 0 else 1]
+    assert bst.range_query(100, 109) == list(range(100, 110))
+    expected_first_keys = [0, 1, 2] if keys.start == 0 else [1, 2, 3]
+    assert [key for key, _ in bst.inorder()][:3] == expected_first_keys
+    assert bst.root.height < 32

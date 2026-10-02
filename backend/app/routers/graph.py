@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import List
 from pydantic import BaseModel
@@ -8,9 +10,6 @@ from app.dsa.table_graph import Graph
 from app.auth import require_roles
 
 router = APIRouter(prefix="/tables", tags=["tables"])
-
-# Module-level graph singleton — persists adjacency between requests
-graph_instance = Graph()
 
 # Only admin and manager can configure table adjacency
 ADJACENCY_MANAGEMENT_ROLES = (
@@ -55,14 +54,46 @@ def add_adjacency(
     db: Session = Depends(get_db),
     _: models.Staff = Depends(require_roles(*ADJACENCY_MANAGEMENT_ROLES)),
 ):
-    """Mark two tables as physically adjacent (combinable) — admin/manager only."""
+    """Persist a physical adjacency edge — admin/manager only."""
+    if table_id == other_id:
+        raise HTTPException(status_code=422, detail="A table cannot be adjacent to itself")
     for tid in (table_id, other_id):
         if not db.query(models.Table).filter(models.Table.id == tid).first():
             raise HTTPException(status_code=404, detail=f"Table id={tid} not found")
-    graph_instance.add_edge(table_id, other_id)
+    low_id, high_id = sorted((table_id, other_id))
+    edge = db.query(models.TableAdjacency).filter_by(
+        table_id_low=low_id,
+        table_id_high=high_id,
+    ).first()
+    if edge is None:
+        db.add(models.TableAdjacency(table_id_low=low_id, table_id_high=high_id))
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            edge = db.query(models.TableAdjacency).filter_by(
+                table_id_low=low_id,
+                table_id_high=high_id,
+            ).first()
+            if edge is None:
+                raise
+    neighbors = _neighbors(db, table_id)
     return AdjacencyResponse(
         table_id=table_id,
-        adjacent_table_ids=graph_instance.neighbors(table_id),
+        adjacent_table_ids=neighbors,
+    )
+
+
+def _neighbors(db: Session, table_id: int) -> List[int]:
+    edges = db.query(models.TableAdjacency).filter(
+        or_(
+            models.TableAdjacency.table_id_low == table_id,
+            models.TableAdjacency.table_id_high == table_id,
+        )
+    ).all()
+    return sorted(
+        edge.table_id_high if edge.table_id_low == table_id else edge.table_id_low
+        for edge in edges
     )
 
 
@@ -70,10 +101,16 @@ def add_adjacency(
 def remove_adjacency(
     table_id: int,
     other_id: int,
+    db: Session = Depends(get_db),
     _: models.Staff = Depends(require_roles(*ADJACENCY_MANAGEMENT_ROLES)),
 ):
-    """Remove the adjacency edge between two tables — admin/manager only."""
-    graph_instance.remove_edge(table_id, other_id)
+    """Remove the persisted adjacency edge — admin/manager only."""
+    low_id, high_id = sorted((table_id, other_id))
+    db.query(models.TableAdjacency).filter_by(
+        table_id_low=low_id,
+        table_id_high=high_id,
+    ).delete(synchronize_session=False)
+    db.commit()
 
 
 # ── GET /tables/combine ────────────────────────────────────────────────────────
@@ -91,11 +128,17 @@ def combine_tables(
     tables = db.query(models.Table).all()
     table_map = {t.id: t for t in tables}
 
-    # Sync DB tables into graph (no-op if already added)
+    graph = Graph()
     for t in tables:
-        graph_instance.add_node(t.id)
+        graph.add_node(t.id)
 
-    components = graph_instance.connected_components()
+    table_ids = set(table_map)
+    edges = db.query(models.TableAdjacency).all()
+    for edge in edges:
+        if edge.table_id_low in table_ids and edge.table_id_high in table_ids:
+            graph.add_edge(edge.table_id_low, edge.table_id_high)
+
+    components = graph.connected_components()
 
     groups: List[TableGroupResponse] = []
     for component in components:

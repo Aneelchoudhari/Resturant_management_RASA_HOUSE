@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -98,11 +98,11 @@ def admin_allocate_table(
     Admin master allocation: directly assign any available table to any customer.
     Sets table status to occupied and records an audit log entry.
     """
-    table = db.query(models.Table).filter(models.Table.id == payload.table_id).first()
+    table = db.query(models.Table).filter(models.Table.id == payload.table_id).with_for_update().first()
     if not table:
         raise HTTPException(status_code=404, detail="Table not found")
-    if table.status == models.TableStatus.occupied:
-        raise HTTPException(status_code=409, detail="Table is already occupied")
+    if table.status != models.TableStatus.available:
+        raise HTTPException(status_code=409, detail="Table is not available for allocation")
 
     # Determine guest name for audit
     guest_name = payload.guest_name
@@ -116,8 +116,25 @@ def admin_allocate_table(
     if not guest_name:
         raise HTTPException(status_code=400, detail="Provide either customer_id or guest_name")
 
+    if payload.party_size > table.capacity:
+        raise HTTPException(status_code=422, detail="Party size exceeds table capacity")
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    active_reservations = db.query(models.Reservation).filter(
+        models.Reservation.table_id == table.id,
+        models.Reservation.status.in_((models.ReservationStatus.pending, models.ReservationStatus.confirmed)),
+    ).with_for_update().all()
+    if any(
+        reservation.start_time + timedelta(minutes=reservation.duration_minutes) > now
+        for reservation in active_reservations
+    ):
+        raise HTTPException(status_code=409, detail="Table is reserved for an active booking")
+
     # Set table to occupied
     table.status = models.TableStatus.occupied
+    table.current_customer_id = customer.id if customer else None
+    table.current_guest_name = guest_name
+    table.current_party_size = payload.party_size
 
     db.add(models.AuditLog(
         staff_id=admin.id,
@@ -136,4 +153,5 @@ def admin_allocate_table(
         status=table.status,
         customer_id=payload.customer_id,
         guest_name=guest_name,
+        party_size=payload.party_size,
     )

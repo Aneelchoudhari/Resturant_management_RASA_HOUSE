@@ -28,6 +28,7 @@ class MinHeap:
 
     def __init__(self):
         self._data: list = []
+        self._positions: dict[int, int] = {}
 
     # ── index helpers ──────────────────────────────────────────────────────────
 
@@ -42,6 +43,8 @@ class MinHeap:
 
     def _swap(self, i: int, j: int) -> None:
         self._data[i], self._data[j] = self._data[j], self._data[i]
+        self._positions[self._data[i][1]] = i
+        self._positions[self._data[j][1]] = j
 
     # ── core heap operations ───────────────────────────────────────────────────
 
@@ -75,9 +78,51 @@ class MinHeap:
     # ── public API ─────────────────────────────────────────────────────────────
 
     def push(self, score: float, item_id: int, item: object) -> None:
-        """Insert (score, item_id, item) into the heap. O(log n)."""
+        """Insert or replace the item with this ID. O(log n)."""
+        if item_id in self._positions:
+            self.update(item_id, score, item)
+            return
         self._data.append((score, item_id, item))
-        self._bubble_up(len(self._data) - 1)
+        index = len(self._data) - 1
+        self._positions[item_id] = index
+        self._bubble_up(index)
+
+    def update(self, item_id: int, score: float, item: object) -> None:
+        """Update one existing ID, inserting it if absent. O(log n)."""
+        index = self._positions.get(item_id)
+        if index is None:
+            self.push(score, item_id, item)
+            return
+        old_score = self._data[index][0]
+        self._data[index] = (score, item_id, item)
+        if score < old_score:
+            self._bubble_up(index)
+        else:
+            self._bubble_down(index)
+
+    def remove(self, item_id: int) -> object | None:
+        """Remove an item by ID and return its value, or None if missing."""
+        index = self._positions.get(item_id)
+        if index is None:
+            return None
+        self._swap(index, len(self._data) - 1)
+        _, removed_id, item = self._data.pop()
+        self._positions.pop(removed_id, None)
+        if index < len(self._data):
+            parent = self._parent(index)
+            if index > 0 and self._data[index][0] < self._data[parent][0]:
+                self._bubble_up(index)
+            else:
+                self._bubble_down(index)
+        return item
+
+    def heapify(self, entries) -> None:
+        """Build from (score, item_id, item) entries in O(n). Last ID wins."""
+        by_id = {item_id: (score, item_id, item) for score, item_id, item in entries}
+        self._data = list(by_id.values())
+        self._positions = {entry[1]: index for index, entry in enumerate(self._data)}
+        for index in range(len(self._data) // 2 - 1, -1, -1):
+            self._bubble_down(index)
 
     def pop(self) -> tuple:
         """Remove and return the element with the lowest score. O(log n)."""
@@ -85,6 +130,7 @@ class MinHeap:
             raise IndexError("pop from empty heap")
         self._swap(0, len(self._data) - 1)
         score, item_id, item = self._data.pop()
+        self._positions.pop(item_id, None)
         if self._data:
             self._bubble_down(0)
         return score, item_id, item
@@ -107,7 +153,7 @@ class MinHeap:
         Builds a temporary copy and pops from it — O(n log n).
         """
         temp = MinHeap()
-        temp._data = list(self._data)
+        temp.heapify(self._data)
         result = []
         while not temp.is_empty():
             result.append(temp.pop())

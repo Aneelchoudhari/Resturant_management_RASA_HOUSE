@@ -177,3 +177,9 @@ class TestAllocate:
         result = allocate(res, tables)
         assert 1 in assigned_ids(result)
         assert 2 in result["unassigned"]
+
+    def test_large_sequential_schedule_reuses_single_table(self):
+        reservations = [make_res(index, index * 3600, 60, 2) for index in range(10000)]
+        result = allocate(reservations, [make_table(10, 4)])
+        assert len(result["assignments"]) == 10000
+        assert result["unassigned"] == []

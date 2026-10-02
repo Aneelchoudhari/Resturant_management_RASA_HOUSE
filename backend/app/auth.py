@@ -11,8 +11,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models
+from app.security_settings import resolve_secret_key
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
+APP_ENV = os.getenv("APP_ENV", "development").lower()
+SECRET_KEY = resolve_secret_key(APP_ENV, os.getenv("SECRET_KEY"))
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
@@ -48,13 +50,14 @@ def get_current_staff(
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: Optional[str] = payload.get("sub")
-        if not email:
+        role: Optional[str] = payload.get("role")
+        if not email or not role:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
 
     staff = db.query(models.Staff).filter(models.Staff.email == email).first()
-    if not staff or not staff.active:
+    if not staff or not staff.active or staff.role.value != role:
         raise credentials_exception
     return staff
 
@@ -119,3 +122,23 @@ def get_optional_customer(
     except JWTError:
         return None
     return db.query(models.Customer).filter(models.Customer.email == email).first()
+
+
+def get_optional_staff(
+    token: Optional[str] = Depends(optional_oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> Optional[models.Staff]:
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: Optional[str] = payload.get("sub")
+        role: Optional[str] = payload.get("role")
+        if not email or not role or role == "customer":
+            return None
+    except JWTError:
+        return None
+    staff = db.query(models.Staff).filter(models.Staff.email == email).first()
+    if not staff or not staff.active or staff.role.value != role:
+        return None
+    return staff

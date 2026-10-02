@@ -1,3 +1,4 @@
+from collections import deque
 from typing import List, Optional
 
 
@@ -6,8 +7,9 @@ class Graph:
     Undirected graph using an adjacency list (dict of sets).
     Models restaurant tables as nodes and physical adjacency as edges.
 
-    BFS and DFS are both O(V + E).
-    connected_components() is O(V + E) — runs BFS from every unvisited node.
+    BFS/DFS take O(V + E + sum(deg(v) log deg(v))) because neighbors are sorted
+    for deterministic traversal. connected_components additionally sorts the
+    V starting nodes. Queue operations themselves are O(1) via deque.
     """
 
     def __init__(self):
@@ -48,6 +50,7 @@ class Graph:
         return u in self._adj and v in self._adj[u]
 
     def neighbors(self, node_id: int) -> List[int]:
+        """Return sorted neighbors in O(d log d), where d is the degree."""
         return sorted(self._adj.get(node_id, set()))
 
     def nodes(self) -> List[int]:
@@ -63,18 +66,18 @@ class Graph:
 
     def bfs(self, start: int) -> List[int]:
         """
-        Breadth-first traversal from start node.
-        Returns nodes in BFS discovery order. O(V + E).
+        Breadth-first traversal from start node with deterministic neighbor order.
+        Queue operations are O(1); sorting adjacency adds sum(deg(v) log deg(v)).
         """
         if start not in self._adj:
             return []
 
         visited: set = {start}
-        queue: list = [start]   # FIFO — append to back, pop from front
+        queue = deque([start])
         result: List[int] = []
 
         while queue:
-            node = queue.pop(0)
+            node = queue.popleft()
             result.append(node)
             for neighbor in self.neighbors(node):   # sorted for determinism
                 if neighbor not in visited:
@@ -88,7 +91,7 @@ class Graph:
     def dfs(self, start: int) -> List[int]:
         """
         Depth-first traversal from start node (iterative, stack-based).
-        Returns nodes in DFS discovery order. O(V + E).
+        Deterministic neighbor sorting adds sum(deg(v) log deg(v)).
         """
         if start not in self._adj:
             return []
@@ -116,7 +119,7 @@ class Graph:
         """
         Find all connected components using BFS from each unvisited node.
         Returns a list of components, each component is a sorted list of node ids.
-        O(V + E).
+        O(V log V + E + sum(deg(v) log deg(v))) with deterministic ordering.
         """
         visited: set = set()
         components: List[List[int]] = []

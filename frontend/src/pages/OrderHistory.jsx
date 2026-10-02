@@ -102,7 +102,7 @@ export default function OrderHistory() {
           </div>
         </form>
         <p style={{ fontSize: '0.75rem', color: '#a0aec0', marginTop: '0.5rem' }}>
-          Uses BST range query O(log n + m) on the backend
+          Filtered by the indexed order creation time
         </p>
       </div>
 

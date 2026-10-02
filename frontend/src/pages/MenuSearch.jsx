@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { createCustomerOrder, searchMenu, fetchMenuByCategory } from '../api'
+import { createCustomerOrder, searchMenu, fetchMenuByCategory, fetchTables } from '../api'
 import { isCustomerUser } from '../auth'
 
 const CATEGORIES = ['mains', 'sides', 'desserts', 'drinks', 'starters']
@@ -11,10 +11,13 @@ export default function MenuSearch() {
   const [error, setError] = useState('')
   const [cart, setCart] = useState([])
   const [orderType, setOrderType] = useState('dine_in')
+  const [availableTables, setAvailableTables] = useState([])
+  const [tableId, setTableId] = useState('')
   const [instructions, setInstructions] = useState('')
   const [orderResult, setOrderResult] = useState(null)
   const [ordering, setOrdering] = useState(false)
   const debounce = useRef(null)
+  const orderIdempotencyKey = useRef(null)
 
   // Live prefix search — debounced 300ms
   useEffect(() => {
@@ -30,6 +33,19 @@ export default function MenuSearch() {
     }, 300)
     return () => clearTimeout(debounce.current)
   }, [query])
+
+  useEffect(() => {
+    if (orderType !== 'dine_in') return
+    let cancelled = false
+    fetchTables()
+      .then((tables) => {
+        if (!cancelled) setAvailableTables(tables.filter((table) => table.status === 'available'))
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String(e))
+      })
+    return () => { cancelled = true }
+  }, [orderType])
 
   const filterByCategory = async (cat) => {
     setError('')
@@ -50,6 +66,7 @@ export default function MenuSearch() {
   }
 
   const addToCart = (item) => {
+    orderIdempotencyKey.current = null
     setCart((current) => {
       const existing = current.find((entry) => entry.menu_item_id === item.id)
       if (existing) {
@@ -62,6 +79,7 @@ export default function MenuSearch() {
   }
 
   const updateQuantity = (id, quantity) => {
+    orderIdempotencyKey.current = null
     setCart((current) => current.map((entry) => entry.menu_item_id === id
       ? { ...entry, quantity: Math.max(1, quantity) }
       : entry))
@@ -72,13 +90,17 @@ export default function MenuSearch() {
     setOrderResult(null)
     setOrdering(true)
     try {
+      orderIdempotencyKey.current ||= crypto.randomUUID()
       const order = await createCustomerOrder({
         order_type: orderType,
+        table_id: orderType === 'dine_in' ? Number(tableId) : null,
         special_instructions: instructions || null,
         items: cart.map(({ menu_item_id, quantity }) => ({ menu_item_id, quantity })),
-      })
+      }, orderIdempotencyKey.current)
       setOrderResult(order)
+      orderIdempotencyKey.current = null
       setCart([])
+      setTableId('')
       setInstructions('')
     } catch (e) {
       setError(String(e))
@@ -136,7 +158,7 @@ export default function MenuSearch() {
           </ul>
         )}
         <p style={{ fontSize: '0.75rem', color: '#a0aec0', marginTop: '0.75rem' }}>
-          {results.length} item{results.length !== 1 ? 's' : ''} — searching via Trie prefix match
+          {results.length} item{results.length !== 1 ? 's' : ''} — database prefix search
         </p>
       </div>
 
@@ -153,11 +175,23 @@ export default function MenuSearch() {
           {isCustomerUser() ? (
             <>
               <div className="row mt1">
-                <div className="field"><label>Order Type</label><select value={orderType} onChange={(e) => setOrderType(e.target.value)}><option value="dine_in">Dine-in</option><option value="takeaway">Takeaway</option></select></div>
-                <div className="field"><label>Special Instructions</label><input value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Less spicy, no onions..." /></div>
+                <div className="field"><label>Order Type</label><select value={orderType} onChange={(e) => { orderIdempotencyKey.current = null; setOrderType(e.target.value); setTableId('') }}><option value="dine_in">Dine-in</option><option value="takeaway">Takeaway</option></select></div>
+                {orderType === 'dine_in' && (
+                  <div className="field">
+                    <label>Table</label>
+                    <select value={tableId} onChange={(e) => { orderIdempotencyKey.current = null; setTableId(e.target.value) }} required>
+                      <option value="">Choose an available table</option>
+                      {availableTables.map((table) => (
+                        <option key={table.id} value={table.id}>Table {table.number} · {table.capacity} seats</option>
+                      ))}
+                    </select>
+                    {availableTables.length === 0 && <small>No tables are currently available.</small>}
+                  </div>
+                )}
+                <div className="field"><label>Special Instructions</label><input value={instructions} onChange={(e) => { orderIdempotencyKey.current = null; setInstructions(e.target.value) }} placeholder="Less spicy, no onions..." /></div>
               </div>
               <p className="mt1"><strong>Total: ₹{cartTotal.toFixed(2)}</strong></p>
-              <button className="btn btn-success mt1" onClick={placeOrder} disabled={ordering}>{ordering ? 'Placing order…' : 'Place Order'}</button>
+              <button className="btn btn-success mt1" onClick={placeOrder} disabled={ordering || (orderType === 'dine_in' && !tableId)}>{ordering ? 'Placing order…' : 'Place Order'}</button>
             </>
           ) : <p className="error mt1">Please sign in as a customer before placing an order.</p>}
         </div>

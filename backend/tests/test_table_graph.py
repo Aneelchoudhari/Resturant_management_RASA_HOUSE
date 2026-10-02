@@ -115,6 +115,12 @@ class TestBFS:
         g = Graph()
         assert g.bfs(1) == []
 
+    def test_bfs_large_star_graph(self):
+        graph = make_graph(edges=[(0, node_id) for node_id in range(1, 10001)])
+        result = graph.bfs(0)
+        assert len(result) == 10001
+        assert result[:4] == [0, 1, 2, 3]
+
 
 # ── DFS tests ──────────────────────────────────────────────────────────────────
 
